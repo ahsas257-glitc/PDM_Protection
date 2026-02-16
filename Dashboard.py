@@ -717,3 +717,15 @@ with tab_provinces:
             .properties(height=360, title="Disability (This Province)")
         )
         st.altair_chart(ddonut, use_container_width=True)
+
+with st.sidebar:
+    # ... بقیه آیتم‌های سایدبار شما
+
+    st.markdown(
+        """
+        <div class="pdm-sidebar-footer">
+          Made by Shabir Ahmad Ehsaas
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
