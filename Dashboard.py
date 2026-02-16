@@ -15,25 +15,6 @@ st.set_page_config(page_title="Dashboard | PDM", page_icon="", layout="wide")
 load_css()
 page_header("Dashboard", "Modern operational dashboard for monitoring and analysis")
 
-st.markdown(
-    """
-    <style>
-      .block-container { padding-top: 1.1rem; padding-bottom: 2rem; }
-      .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-      .stTabs [data-baseweb="tab"] { border-radius: 12px; padding: 8px 12px; }
-      [data-testid="stVerticalBlock"] { gap: 0.75rem; }
-
-      /* Progress line (custom) */
-      .pwrap { width: 100%; background: #E9EDF3; border-radius: 999px; height: 10px; overflow: hidden; }
-      .pbar  { height: 10px; border-radius: 999px; }
-      .plabel { display:flex; justify-content:space-between; align-items:center; margin: 6px 0 6px 0; }
-      .plabel span { font-size: 12px; opacity: 0.85; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
 # ============================================================
 # Secrets
 # ============================================================
