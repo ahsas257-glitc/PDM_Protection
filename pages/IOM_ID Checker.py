@@ -19,19 +19,6 @@ st.set_page_config(page_title="IOM ID Checker | PDM", page_icon="🆔", layout="
 load_css()
 page_header("🆔 IOM ID Checker", "Validate Raw Kobo IOM IDs against the Sample list and log missing IDs")
 
-st.markdown(
-    """
-    <style>
-      .block-container { padding-top: 1.1rem; padding-bottom: 2rem; }
-      .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-      .stTabs [data-baseweb="tab"] { border-radius: 12px; padding: 8px 12px; }
-      [data-testid="stVerticalBlock"] { gap: 0.75rem; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
 # ============================================================
 # Secrets + Client
 # ============================================================
