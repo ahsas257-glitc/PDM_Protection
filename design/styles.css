@@ -1,72 +1,650 @@
-/* Base */
+/* =========================================================
+   PDM — Liquid Glass Theme (DARK-LOCKED)
+   Controlled from /design/styles.css
+
+   Goals in this version:
+   1) Toolbar (top-right) becomes fully "liquid glass"
+   2) Three-dots menu stays available
+   3) ONLY the "Choose app theme" option is disabled/hidden
+   4) Theme is still forced to DARK regardless of user setting
+   ========================================================= */
+
+/* -------------------------
+   Base variables (DARK)
+   ------------------------- */
 :root{
+  --radius-xl: 22px;
+  --radius-lg: 18px;
+  --radius-md: 14px;
+
+  --shadow-lg: 0 18px 50px rgba(0,0,0,0.35);
+  --shadow-md: 0 10px 26px rgba(0,0,0,0.28);
+
+  --glass-blur: 14px;
+  --glass-sat: 140%;
+
+  --stroke: rgba(255,255,255,0.16);
+  --stroke-2: rgba(255,255,255,0.10);
+
   --bg: #0b1220;
-  --card: rgba(255,255,255,0.06);
-  --card2: rgba(255,255,255,0.08);
+  --bg2: #08101c;
+
   --text: rgba(255,255,255,0.92);
-  --muted: rgba(255,255,255,0.65);
-  --stroke: rgba(255,255,255,0.10);
-  --shadow: 0 12px 30px rgba(0,0,0,0.35);
-  --radius: 18px;
+  --muted: rgba(255,255,255,0.66);
+
+  --glass: rgba(255,255,255,0.07);
+  --glass2: rgba(255,255,255,0.10);
+
+  --accent: rgba(96,165,250,0.95);
+  --accent2: rgba(167,139,250,0.90);
+  --good: rgba(52,211,153,0.92);
+
+  --focus: rgba(96,165,250,0.60);
+
+  --code-bg: rgba(255,255,255,0.06);
 }
 
+/* -------------------------
+   FORCE DARK even if Streamlit sets light
+   ------------------------- */
+:root[data-theme="light"],
+html[data-theme="light"],
+body[data-theme="light"],
+:root[data-theme="dark"],
+html[data-theme="dark"],
+body[data-theme="dark"]{
+  --bg: #0b1220;
+  --bg2: #08101c;
+
+  --text: rgba(255,255,255,0.92);
+  --muted: rgba(255,255,255,0.66);
+
+  --stroke: rgba(255,255,255,0.16);
+  --stroke-2: rgba(255,255,255,0.10);
+
+  --glass: rgba(255,255,255,0.07);
+  --glass2: rgba(255,255,255,0.10);
+
+  --shadow-lg: 0 18px 50px rgba(0,0,0,0.35);
+  --shadow-md: 0 10px 26px rgba(0,0,0,0.28);
+
+  --code-bg: rgba(255,255,255,0.06);
+}
+
+/* -------------------------
+   App background + typography
+   ------------------------- */
 html, body, [class*="stApp"]{
-  background: radial-gradient(1200px 800px at 10% 10%, rgba(96,165,250,0.14), transparent 55%),
-              radial-gradient(900px 600px at 90% 20%, rgba(167,139,250,0.13), transparent 50%),
-              radial-gradient(900px 700px at 50% 90%, rgba(52,211,153,0.10), transparent 55%),
-              var(--bg);
+  background:
+    radial-gradient(1100px 700px at 10% 12%, rgba(96,165,250,0.18), transparent 55%),
+    radial-gradient(900px 600px at 90% 18%, rgba(167,139,250,0.16), transparent 52%),
+    radial-gradient(900px 700px at 50% 92%, rgba(52,211,153,0.13), transparent 55%),
+    linear-gradient(180deg, var(--bg), var(--bg2));
   color: var(--text);
+}
+
+*{
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Container */
 .block-container{
-  padding-top: 1.2rem;
-  max-width: 1180px;
+  padding-top: 1.1rem;
+  padding-bottom: 2rem;
+  max-width: 1220px;
 }
 
-/* Sidebar */
-section[data-testid="stSidebar"]{
-  background: rgba(255,255,255,0.03);
-  border-right: 1px solid var(--stroke);
-}
-section[data-testid="stSidebar"] *{
-  color: var(--text);
-}
-
-/* Cards */
-.pdm-card{
-  background: linear-gradient(180deg, var(--card), var(--card2));
-  border: 1px solid var(--stroke);
-  border-radius: var(--radius);
-  padding: 16px 18px;
-  box-shadow: var(--shadow);
-}
-.pdm-title{
-  font-size: 1.25rem;
-  font-weight: 700;
+/* Default headings/text */
+h1, h2, h3, h4, h5, h6{
+  color: var(--text) !important;
   letter-spacing: 0.2px;
 }
+p, li, span, label, div{
+  color: var(--text);
+}
+.pdm-muted{ color: var(--muted) !important; }
+
+/* Vertical spacing consistency */
+[data-testid="stVerticalBlock"]{ gap: 0.75rem; }
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"]{ gap: 10px; }
+.stTabs [data-baseweb="tab"]{
+  border-radius: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--stroke) !important;
+  background: linear-gradient(180deg, var(--glass2), var(--glass)) !important;
+  color: var(--text) !important;
+}
+.stTabs [aria-selected="true"]{
+  box-shadow: 0 0 0 4px rgba(96,165,250,0.18);
+}
+
+/* -------------------------
+   Sidebar (Liquid Glass)
+   ------------------------- */
+section[data-testid="stSidebar"]{
+  background: linear-gradient(180deg, var(--glass2), var(--glass));
+  border-right: 1px solid var(--stroke);
+  box-shadow: 12px 0 40px rgba(0,0,0,0.10);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+}
+section[data-testid="stSidebar"] *{
+  color: var(--text) !important;
+}
+
+/* -------------------------
+   Liquid Glass Card
+   ------------------------- */
+.pdm-card{
+  position: relative;
+  border-radius: var(--radius-xl);
+  padding: 16px 18px;
+
+  background: linear-gradient(180deg, var(--glass2), var(--glass));
+  border: 1px solid var(--stroke);
+
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  box-shadow: var(--shadow-lg);
+
+  overflow: hidden;
+}
+.pdm-card::before{
+  content: "";
+  position: absolute;
+  inset: -2px;
+  background:
+    radial-gradient(600px 200px at 20% 0%, rgba(255,255,255,0.22), transparent 55%),
+    radial-gradient(700px 260px at 90% 10%, rgba(255,255,255,0.14), transparent 60%);
+  opacity: 0.8;
+  pointer-events: none;
+}
+.pdm-card::after{
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-xl);
+  padding: 1px;
+  background: linear-gradient(135deg,
+    rgba(96,165,250,0.55),
+    rgba(167,139,250,0.35),
+    rgba(52,211,153,0.30)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.35;
+}
+
+/* -------------------------
+   Page Header Card (NEW)
+   ------------------------- */
+.pdm-page-header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 18px;
+}
+.pdm-page-left{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.pdm-page-icon{
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--stroke);
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
+  box-shadow: var(--shadow-md);
+  flex: 0 0 auto;
+}
+.pdm-page-text{ min-width: 0; }
+.pdm-title{
+  font-size: 1.22rem;
+  font-weight: 780;
+  color: var(--text);
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .pdm-sub{
+  margin-top: 4px;
   color: var(--muted);
   font-size: 0.92rem;
+  line-height: 1.35;
+  max-width: 78ch;
 }
+.pdm-spacer{ height: 14px; }
 
-/* Buttons */
+/* KPI typography */
+.pdm-kpi-label{ font-size: 0.85rem; color: var(--muted); }
+.pdm-kpi-value{ font-size: 1.6rem; font-weight: 800; margin-top: 6px; }
+.pdm-kpi-help{ font-size: 0.85rem; color: var(--muted); margin-top: 6px; }
+
+/* -------------------------
+   Buttons
+   ------------------------- */
 .stButton>button{
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--stroke);
-  background: rgba(255,255,255,0.06);
+  background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05));
   color: var(--text);
-  padding: 0.55rem 0.9rem;
+  padding: 0.58rem 0.95rem;
+  box-shadow: var(--shadow-md);
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 .stButton>button:hover{
-  background: rgba(255,255,255,0.10);
-  border-color: rgba(255,255,255,0.18);
+  background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.07));
+  border-color: rgba(255,255,255,0.22);
+  transform: translateY(-1px);
+}
+.stButton>button:focus{
+  outline: none !important;
+  box-shadow: 0 0 0 4px var(--focus), var(--shadow-md);
 }
 
-/* Dataframe */
+/* -------------------------
+   Inputs
+   ------------------------- */
+[data-baseweb="input"] > div,
+[data-baseweb="select"] > div{
+  border-radius: var(--radius-md) !important;
+  border: 1px solid var(--stroke) !important;
+  background: linear-gradient(180deg, var(--glass2), var(--glass)) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+}
+input::placeholder{ color: var(--muted) !important; }
+
+/* -------------------------
+   Dataframe
+   ------------------------- */
 [data-testid="stDataFrame"]{
   border: 1px solid var(--stroke);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   overflow: hidden;
+  background: linear-gradient(180deg, var(--glass2), var(--glass));
+  backdrop-filter: blur(calc(var(--glass-blur) - 2px)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) - 2px)) saturate(var(--glass-sat));
+  box-shadow: var(--shadow-md);
+}
+
+/* -------------------------
+   Code blocks
+   ------------------------- */
+code, pre{
+  background: var(--code-bg) !important;
+  border: 1px solid var(--stroke-2) !important;
+  border-radius: 12px !important;
+  color: var(--text) !important;
+}
+
+/* -------------------------
+   Progress line (used in Dashboard)
+   ------------------------- */
+.pwrap{
+  width: 100%;
+  background: rgba(233,237,243,0.35);
+  border-radius: 999px;
+  height: 10px;
+  overflow: hidden;
+  border: 1px solid var(--stroke-2);
+}
+.pbar{
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(96,165,250,0.90), rgba(167,139,250,0.85), rgba(52,211,153,0.85));
+}
+
+/* =========================================================
+   TOOLBAR — Liquid Glass + disable ONLY "Choose app theme"
+   ========================================================= */
+
+/* 1) Make the top toolbar glassy (do NOT hide it) */
+header[data-testid="stHeader"]{
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04)) !important;
+  border-bottom: 1px solid var(--stroke) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+}
+
+/* Toolbar container (some versions use stToolbar / stToolbarActions) */
+[data-testid="stToolbar"],
+[data-testid="stToolbarActions"],
+[data-testid="stToolbarActionButtons"]{
+  background: transparent !important;
+}
+
+/* Make toolbar icon buttons glass */
+header[data-testid="stHeader"] button,
+[data-testid="stToolbar"] button{
+  border-radius: 12px !important;
+  border: 1px solid var(--stroke) !important;
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04)) !important;
+  box-shadow: var(--shadow-md) !important;
+  color: var(--text) !important;
+}
+header[data-testid="stHeader"] button:hover,
+[data-testid="stToolbar"] button:hover{
+  background: linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.06)) !important;
+  transform: translateY(-1px);
+}
+
+/* 2) Style the opened "three dots" menu / popover as glass */
+[data-baseweb="popover"] [role="dialog"],
+[data-baseweb="popover"] [data-baseweb="menu"]{
+  border-radius: 16px !important;
+  border: 1px solid var(--stroke) !important;
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05)) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  box-shadow: var(--shadow-lg) !important;
+}
+
+/* Menu items typography */
+[data-baseweb="menu"] *{
+  color: var(--text) !important;
+}
+
+/* 3) Disable/Hide ONLY the "Choose app theme" entry.
+   Streamlit DOM differs by version; we include multiple safe selectors.
+   Any that match will hide that single menu item without breaking the menu.
+*/
+
+/* Most likely: a dedicated testid (varies by version) */
+[data-testid="stAppThemeButton"],
+[data-testid="stAppThemeMenuItem"],
+[data-testid="stChooseTheme"],
+[data-testid="stThemeSelector"]{
+  display: none !important;
+}
+
+/* If it's a button with aria-label (some builds use this) */
+button[aria-label="Choose app theme"],
+button[title="Choose app theme"]{
+  display: none !important;
+}
+
+/* Some builds render it as a menuitem role */
+[role="menuitem"][aria-label="Choose app theme"],
+[role="menuitem"][title="Choose app theme"]{
+  display: none !important;
+}
+
+/* Optional: also block theme “settings” entry if it appears under other labels */
+button[aria-label="Settings: Theme"],
+[role="menuitem"][aria-label="Settings: Theme"]{
+  display: none !important;
+}
+/* =========================
+   Toolbar: FULL glass (NO BLUR so title remains sharp)
+   Sidebar: slightly BLURRED glass
+   (Paste these overrides at the END of your styles.css)
+   ========================= */
+
+/* ---------- TOOLBAR / HEADER (glass, NO blur) ---------- */
+header[data-testid="stHeader"]{
+  /* Stronger glass look */
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,0.14),
+    rgba(255,255,255,0.06)
+  ) !important;
+
+  border-bottom: 1px solid var(--stroke) !important;
+  box-shadow: 0 10px 26px rgba(0,0,0,0.22) !important;
+
+  /* مهم: بلر را کامل خاموش می‌کنیم تا نوشته‌ها واضح بمانند */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Toolbar containers remain transparent */
+[data-testid="stToolbar"],
+[data-testid="stToolbarActions"],
+[data-testid="stToolbarActionButtons"]{
+  background: transparent !important;
+}
+
+/* Toolbar icon buttons: glass, no blur */
+header[data-testid="stHeader"] button,
+[data-testid="stToolbar"] button{
+  border-radius: 12px !important;
+  border: 1px solid var(--stroke) !important;
+
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,0.14),
+    rgba(255,255,255,0.06)
+  ) !important;
+
+  box-shadow: var(--shadow-md) !important;
+  color: var(--text) !important;
+
+  /* no blur on buttons either */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+
+header[data-testid="stHeader"] button:hover,
+[data-testid="stToolbar"] button:hover{
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,0.20),
+    rgba(255,255,255,0.08)
+  ) !important;
+
+  border-color: rgba(255,255,255,0.22) !important;
+  transform: translateY(-1px);
+}
+
+/* ---------- Three-dots menu popover: keep glass BUT minimal blur (optional) ---------- */
+[data-baseweb="popover"] [role="dialog"],
+[data-baseweb="popover"] [data-baseweb="menu"]{
+  border-radius: 16px !important;
+  border: 1px solid var(--stroke) !important;
+  background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06)) !important;
+
+  /* بلر کم، چون داخل منو نوشته‌ها باید واضح باشند */
+  backdrop-filter: blur(6px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(6px) saturate(130%) !important;
+
+  box-shadow: var(--shadow-lg) !important;
+}
+
+/* ---------- SIDEBAR: slightly BLURRED glass ---------- */
+section[data-testid="stSidebar"]{
+  background: linear-gradient(180deg, var(--glass2), var(--glass)) !important;
+  border-right: 1px solid var(--stroke) !important;
+  box-shadow: 12px 0 40px rgba(0,0,0,0.10) !important;
+
+  /* کمی بلر (کمتر از قبل) */
+  backdrop-filter: blur(8px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(8px) saturate(135%) !important;
+}
+
+/* (Optional) Sidebar inner elements keep crisp */
+section[data-testid="stSidebar"] *{
+  color: var(--text) !important;
+  text-shadow: none !important;
+}
+/* =========================
+   ROUND GLASS BACKGROUND
+   For Deploy + Three Dots Buttons
+   ========================= */
+
+/* Toolbar container */
+header[data-testid="stHeader"]{
+  position: relative;
+}
+
+/* Wrap area (right side buttons) */
+header[data-testid="stHeader"] [data-testid="stToolbarActions"]{
+  position: relative;
+  padding: 6px 10px !important;
+  border-radius: 999px !important;
+
+  /* Glass halo */
+  background:
+    radial-gradient(
+      circle at 30% 30%,
+      rgba(96,165,250,0.25),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 70% 70%,
+      rgba(167,139,250,0.22),
+      transparent 60%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255,255,255,0.14),
+      rgba(255,255,255,0.05)
+    ) !important;
+
+  border: 1px solid var(--stroke) !important;
+
+  box-shadow:
+    0 8px 24px rgba(0,0,0,0.35),
+    inset 0 1px 0 rgba(255,255,255,0.15);
+
+  backdrop-filter: blur(6px) saturate(140%);
+  -webkit-backdrop-filter: blur(6px) saturate(140%);
+}
+
+/* Buttons inside (Deploy + dots) */
+header[data-testid="stHeader"] [data-testid="stToolbarActions"] button{
+  border-radius: 999px !important;
+
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+
+  padding: 6px 12px !important;
+  color: var(--text) !important;
+
+  font-weight: 600;
+}
+
+/* Hover glow */
+header[data-testid="stHeader"] [data-testid="stToolbarActions"] button:hover{
+  background: rgba(255,255,255,0.12) !important;
+  box-shadow: 0 0 0 3px rgba(96,165,250,0.25);
+}
+
+/* Three dots icon size fix */
+header[data-testid="stHeader"] svg{
+  filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));
+}
+/* =========================
+   TABS — FULL ROUND HOVER GLOW
+   ========================= */
+
+/* Remove default bottom indicator (red/blue line) */
+.stTabs [data-baseweb="tab"]::after{
+  display: none !important;
+}
+
+/* Base tab */
+.stTabs [data-baseweb="tab"]{
+  position: relative !important;
+
+  border-radius: 999px !important; /* fully rounded */
+  overflow: hidden;
+
+  transition:
+    background 160ms ease,
+    box-shadow 160ms ease,
+    transform 120ms ease;
+}
+
+/* Hover: full circular glow */
+.stTabs [data-baseweb="tab"]:hover{
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,0.18),
+    rgba(255,255,255,0.07)
+  ) !important;
+
+  box-shadow:
+    0 0 0 2px rgba(96,165,250,0.35),
+    0 0 18px rgba(96,165,250,0.45),
+    0 0 32px rgba(167,139,250,0.25) !important;
+
+  transform: translateY(-1px);
+}
+
+/* Selected tab: stronger rounded glow */
+.stTabs [aria-selected="true"]{
+  background: linear-gradient(
+    180deg,
+    rgba(96,165,250,0.22),
+    rgba(255,255,255,0.06)
+  ) !important;
+
+  box-shadow:
+    0 0 0 2px rgba(96,165,250,0.55),
+    0 0 22px rgba(96,165,250,0.55),
+    0 0 38px rgba(167,139,250,0.35) !important;
+
+  font-weight: 650;
+}
+
+/* Active (click) feedback */
+.stTabs [data-baseweb="tab"]:active{
+  transform: scale(0.97);
+}
+/* =========================
+   SETTINGS — Disable "Choose app theme"
+   ========================= */
+
+/* Disable theme dropdown container */
+div:has(> label:contains("Choose app theme")),
+div:has(> span:contains("Choose app theme")){
+  pointer-events: none !important;
+  opacity: 0.45 !important;
+  filter: grayscale(80%);
+}
+
+/* Fallback: disable select when aria-label exists */
+select[aria-label="Choose app theme"],
+button[aria-label="Choose app theme"],
+[role="combobox"][aria-label="Choose app theme"]{
+  pointer-events: none !important;
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+}
+
+/* If rendered as BaseWeb select */
+[data-baseweb="select"] button[aria-haspopup="listbox"]{
+  pointer-events: none !important;
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+}
+
+/* Optional: small lock icon overlay */
+[data-baseweb="select"]::after{
+  content: "🔒";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.9rem;
+  opacity: 0.6;
+  pointer-events: none;
 }
