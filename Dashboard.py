@@ -724,8 +724,9 @@ with st.sidebar:
     st.markdown(
         """
         <div class="pdm-sidebar-footer">
-          Made by Shabir Ahmad Ehsaas
+          Made by Shabeer Ahmad Ahsas
         </div>
         """,
         unsafe_allow_html=True
     )
+
