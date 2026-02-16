@@ -1,0 +1,72 @@
+/* Base */
+:root{
+  --bg: #0b1220;
+  --card: rgba(255,255,255,0.06);
+  --card2: rgba(255,255,255,0.08);
+  --text: rgba(255,255,255,0.92);
+  --muted: rgba(255,255,255,0.65);
+  --stroke: rgba(255,255,255,0.10);
+  --shadow: 0 12px 30px rgba(0,0,0,0.35);
+  --radius: 18px;
+}
+
+html, body, [class*="stApp"]{
+  background: radial-gradient(1200px 800px at 10% 10%, rgba(96,165,250,0.14), transparent 55%),
+              radial-gradient(900px 600px at 90% 20%, rgba(167,139,250,0.13), transparent 50%),
+              radial-gradient(900px 700px at 50% 90%, rgba(52,211,153,0.10), transparent 55%),
+              var(--bg);
+  color: var(--text);
+}
+
+/* Container */
+.block-container{
+  padding-top: 1.2rem;
+  max-width: 1180px;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"]{
+  background: rgba(255,255,255,0.03);
+  border-right: 1px solid var(--stroke);
+}
+section[data-testid="stSidebar"] *{
+  color: var(--text);
+}
+
+/* Cards */
+.pdm-card{
+  background: linear-gradient(180deg, var(--card), var(--card2));
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+}
+.pdm-title{
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.pdm-sub{
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+/* Buttons */
+.stButton>button{
+  border-radius: 14px;
+  border: 1px solid var(--stroke);
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+  padding: 0.55rem 0.9rem;
+}
+.stButton>button:hover{
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.18);
+}
+
+/* Dataframe */
+[data-testid="stDataFrame"]{
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
