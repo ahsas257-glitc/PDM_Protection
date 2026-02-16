@@ -648,3 +648,33 @@ button[aria-label="Choose app theme"],
   opacity: 0.6;
   pointer-events: none;
 }
+
+/* =========================
+   SIDEBAR FOOTER (bottom)
+   ========================= */
+section[data-testid="stSidebar"]{
+  position: relative;
+}
+
+.pdm-sidebar-footer{
+  position: sticky;
+  bottom: 10px;
+
+  margin-top: 18px;
+  padding: 10px 12px;
+
+  border-radius: 14px;
+  border: 1px solid var(--stroke);
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
+
+  /* کمی شیشه‌ای ولی خوانا */
+  backdrop-filter: blur(6px) saturate(130%);
+  -webkit-backdrop-filter: blur(6px) saturate(130%);
+
+  box-shadow: var(--shadow-md);
+
+  color: var(--muted) !important;
+  font-size: 0.85rem;
+  text-align: center;
+  letter-spacing: 0.2px;
+}
