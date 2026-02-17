@@ -30,6 +30,18 @@ AUDIT_SHEET_NAME = "Audit_Log"
 
 
 # -----------------------------
+# Safe stop (no traceback)
+# -----------------------------
+def safe_stop(msg: str, exc: Exception | None = None):
+    st.error(msg)
+    if exc is not None:
+        # hidden details in expander (optional; keeps UI clean)
+        with st.expander("Details (for admin)"):
+            st.write(str(exc))
+    st.stop()
+
+
+# -----------------------------
 # Retry wrapper (429 + network-safe)
 # -----------------------------
 def retry_api(fn, *args, **kwargs):
@@ -54,7 +66,14 @@ def retry_api(fn, *args, **kwargs):
                 or "RemoteDisconnected" in msg
                 or "SSLError" in msg
                 or "TLS" in msg
-                or isinstance(e, (requests.exceptions.ConnectionError, requests.exceptions.Timeout, socket.timeout))
+                or isinstance(
+                    e,
+                    (
+                        requests.exceptions.ConnectionError,
+                        requests.exceptions.Timeout,
+                        socket.timeout,
+                    ),
+                )
             )
 
             if transient:
@@ -140,38 +159,31 @@ def get_worksheets(sa: dict, spreadsheet_id: str):
     users = _get_or_create(USERS_SHEET_NAME, rows=2000, cols=10)
     audit = _get_or_create(AUDIT_SHEET_NAME, rows=10000, cols=10)
 
-    # ---- ensure Locks header (ROBUST: fixes Found: [])
+    # ---- ensure Locks header (robust)
     required_locks = ["_uuid", "locked_by", "locked_at", "expires_at"]
     header = retry_api(locks.row_values, 1)
     header = [str(h).strip() for h in header if str(h).strip()]
-
     if header != required_locks:
-        # Always set header row; safe even if sheet has stray blanks
         retry_api(locks.update, "A1:D1", [required_locks])
-
         header2 = retry_api(locks.row_values, 1)
         header2 = [str(h).strip() for h in header2 if str(h).strip()]
         if header2 != required_locks:
-            st.error(
+            safe_stop(
                 f"Worksheet '{LOCK_SHEET_NAME}' header could not be set automatically.\n"
                 f"Expected: {required_locks}\nFound: {header2}"
             )
-            st.stop()
 
     # ---- ensure Users header
     required_users = ["email", "password_hash", "is_active", "reset_code_hash", "reset_expires_at", "last_login_at"]
     uheader = retry_api(users.row_values, 1)
     uheader = [str(h).strip() for h in uheader if str(h).strip()]
-
     if uheader != required_users:
         uvals = retry_api(users.get_all_values)
         if not uvals or len(uvals) == 0:
             retry_api(users.update, "A1:F1", [required_users])
         else:
             if not (("email" in uheader) and ("password_hash" in uheader) and ("is_active" in uheader)):
-                st.error(f"Users sheet header invalid. Expected at least email/password_hash/is_active. Found: {uheader}")
-                st.stop()
-            # If partially compatible, do not auto-overwrite to avoid damaging existing layout.
+                safe_stop(f"Users sheet header invalid. Found: {uheader}")
 
     # ---- ensure Audit_Log header
     required_audit = ["ts_utc", "action", "_uuid", "email", "items_count", "note"]
@@ -203,11 +215,12 @@ def audit_log(audit_ws, action: str, uuid_value: str, email: str, items_count: i
             value_input_option="USER_ENTERED",
         )
     except Exception:
+        # Audit should never break main flow
         pass
 
 
 # -----------------------------
-# Auth helpers (OTP + password set + forgot)
+# Auth helpers
 # -----------------------------
 @st.cache_data(show_spinner=False, ttl=120)
 def load_users_df_cached(_users_ws) -> pd.DataFrame:
@@ -252,10 +265,6 @@ def _bcrypt_check(plain: str, hashed: str) -> bool:
 
 
 def send_otp_email(to_email: str, code: str) -> int:
-    """
-    Sends OTP via SendGrid and returns HTTP status code.
-    Shows diagnostic status in UI to avoid "silent" failures.
-    """
     api_key = st.secrets["auth"]["sendgrid_api_key"]
     from_email = st.secrets["auth"]["from_email"]
 
@@ -271,11 +280,8 @@ def send_otp_email(to_email: str, code: str) -> int:
         subject=subject,
         plain_text_content=body,
     )
-
     sg = SendGridAPIClient(api_key)
     resp = sg.send(msg)
-
-    # Diagnostic: 202 means accepted by SendGrid
     st.info(f"SendGrid response: {resp.status_code} (202 means accepted)")
     return int(resp.status_code)
 
@@ -294,7 +300,6 @@ def upsert_user_reset_code(users_ws, email: str, code: str, expires_at_iso: str)
     rownum = int(row["_row"])
     code_hash = _bcrypt_hash(code)
 
-    # Users columns expected: A email, B password_hash, C is_active, D reset_code_hash, E reset_expires_at, F last_login_at
     retry_api(users_ws.update, f"D{rownum}", [[code_hash]])
     retry_api(users_ws.update, f"E{rownum}", [[expires_at_iso]])
     load_users_df_cached.clear()
@@ -333,9 +338,9 @@ def set_user_password(users_ws, email: str, new_password: str) -> bool:
     rownum = int(hit.iloc[0]["_row"])
     pw_hash = _bcrypt_hash(new_password)
 
-    retry_api(users_ws.update, f"B{rownum}", [[pw_hash]])  # password_hash
-    retry_api(users_ws.update, f"D{rownum}", [[""]])  # clear reset_code_hash
-    retry_api(users_ws.update, f"E{rownum}", [[""]])  # clear reset_expires_at
+    retry_api(users_ws.update, f"B{rownum}", [[pw_hash]])
+    retry_api(users_ws.update, f"D{rownum}", [[""]])
+    retry_api(users_ws.update, f"E{rownum}", [[""]])
     load_users_df_cached.clear()
     return True
 
@@ -369,11 +374,6 @@ def update_last_login(users_ws, email: str):
 
 
 def auth_gate(users_ws):
-    """
-    - Login with email+password
-    - First time / Forgot password: send OTP to registered email, then set/reset your password.
-    - Only emails already present in Users are allowed.
-    """
     if st.session_state.get("auth_ok") and st.session_state.get("auth_email"):
         return
 
@@ -389,12 +389,15 @@ def auth_gate(users_ws):
         if submit:
             email = (email or "").strip().lower()
             if not email or not password:
-                st.error("Email and password required.")
-                st.stop()
+                safe_stop("Email and password required.")
 
-            if not verify_login(users_ws, email, password):
-                st.error("Invalid credentials, account inactive, or password not set.")
-                st.stop()
+            try:
+                ok = verify_login(users_ws, email, password)
+            except Exception as e:
+                safe_stop("Login failed due to a temporary error. Please try again.", e)
+
+            if not ok:
+                safe_stop("Invalid credentials, account inactive, or password not set.")
 
             st.session_state["auth_ok"] = True
             st.session_state["auth_email"] = email
@@ -411,33 +414,31 @@ def auth_gate(users_ws):
         if req:
             email2 = (email2 or "").strip().lower()
             if not email2:
-                st.error("Email required.")
-                st.stop()
+                safe_stop("Email required.")
 
-            dfu = load_users_df_cached(users_ws)
+            try:
+                dfu = load_users_df_cached(users_ws)
+            except Exception as e:
+                safe_stop("Could not load users list (temporary). Please try again.", e)
+
             if dfu[dfu["email"] == email2].empty:
-                st.error("This email is not registered in Users sheet.")
-                st.stop()
+                safe_stop("This email is not registered in Users sheet.")
 
             ttl = int(st.secrets["auth"].get("otp_ttl_minutes", 15))
             code = f"{random.randint(0, 999999):06d}"
             exp = utc_now() + timedelta(minutes=ttl)
 
             if not upsert_user_reset_code(users_ws, email2, code, iso(exp)):
-                st.error("Account inactive or could not create code.")
-                st.stop()
+                safe_stop("Account inactive or could not create code.")
 
             try:
                 status = send_otp_email(email2, code)
                 if status != 202:
-                    st.warning(f"SendGrid did not accept the email (status={status}). Check SendGrid settings.")
-                    st.stop()
+                    safe_stop(f"SendGrid did not accept the email (status={status}). Check SendGrid settings.")
             except Exception as e:
-                st.error("Failed to send email. Check SendGrid API key, sender verification, and network.")
-                st.exception(e)
-                st.stop()
+                safe_stop("Failed to send email. Check SendGrid API key, sender verification, and network.", e)
 
-            st.success("Code accepted by SendGrid. Check your inbox/spam/promotions.")
+            st.success("Code accepted by SendGrid. Check inbox/spam/promotions.")
 
         st.markdown("### Verify code and set password")
         with st.form("set_password_form"):
@@ -452,22 +453,17 @@ def auth_gate(users_ws):
             code3 = (code3 or "").strip()
 
             if not email3 or not code3 or not p1 or not p2:
-                st.error("All fields required.")
-                st.stop()
+                safe_stop("All fields required.")
             if p1 != p2:
-                st.error("Passwords do not match.")
-                st.stop()
+                safe_stop("Passwords do not match.")
             if len(p1) < 8:
-                st.error("Password must be at least 8 characters.")
-                st.stop()
+                safe_stop("Password must be at least 8 characters.")
 
             if not verify_otp(users_ws, email3, code3):
-                st.error("Invalid or expired code.")
-                st.stop()
+                safe_stop("Invalid or expired code.")
 
             if not set_user_password(users_ws, email3, p1):
-                st.error("Failed to set password.")
-                st.stop()
+                safe_stop("Failed to set password.")
 
             st.session_state["auth_ok"] = True
             st.session_state["auth_email"] = email3
@@ -499,7 +495,7 @@ def get_user_id() -> str:
 
 
 # -----------------------------
-# Locks (shared via Google Sheet)
+# Locks
 # -----------------------------
 @st.cache_data(show_spinner=False, ttl=10)
 def load_locks_df_cached(_locks_ws) -> pd.DataFrame:
@@ -621,7 +617,7 @@ def release_lock(locks_ws, uuid_value: str, user_id: str):
 
 
 # -----------------------------
-# Cached data reads
+# Correction log reads
 # -----------------------------
 @st.cache_data(show_spinner=False, ttl=120)
 def load_correction_log_df_cached(_corr_ws) -> pd.DataFrame:
@@ -678,7 +674,7 @@ def get_uuid_column_cached(_ws, uuid_col: str = "_uuid") -> list[str]:
 
 
 # -----------------------------
-# Ensure Correction_Log has translated_by / translated_at columns
+# Ensure translated_by / translated_at
 # -----------------------------
 @st.cache_data(show_spinner=False, ttl=300)
 def get_corr_headers_cached(_corr_ws) -> list[str]:
@@ -726,7 +722,7 @@ def batch_update_translated_meta(corr_ws, row_nums: list[int], email: str):
 
 
 # -----------------------------
-# Clean_Data dedupe in session_state
+# Clean_Data dedupe
 # -----------------------------
 def ensure_clean_uuid_set(clean_ws):
     if "clean_uuid_set" in st.session_state:
@@ -793,7 +789,7 @@ def apply_replacements(raw_headers: list[str], raw_row: list[str], repl: dict) -
 
 
 # -----------------------------
-# UI components (cards)
+# UI cards
 # -----------------------------
 def mini_card(
     title: str,
@@ -829,52 +825,59 @@ def mini_card(
 try:
     sa = dict(st.secrets["gcp_service_account"])
     spreadsheet_id = st.secrets["app"]["spreadsheet_id"]
-except Exception:
-    st.error("Secrets are not configured. Please set .streamlit/secrets.toml (service account + spreadsheet_id).")
-    st.stop()
+except Exception as e:
+    safe_stop("Secrets are not configured. Please set .streamlit/secrets.toml (service account + spreadsheet_id).", e)
 
-ws_map = get_worksheets(sa, spreadsheet_id)
-corr_ws = ws_map["Correction_Log"]
-raw_ws = ws_map["Raw_Kobo_Data"]
-clean_ws = ws_map["Clean_Data"]
-locks_ws = ws_map["Locks"]
-users_ws = ws_map["Users"]
-audit_ws = ws_map["Audit_Log"]
+try:
+    ws_map = get_worksheets(sa, spreadsheet_id)
+    corr_ws = ws_map["Correction_Log"]
+    raw_ws = ws_map["Raw_Kobo_Data"]
+    clean_ws = ws_map["Clean_Data"]
+    locks_ws = ws_map["Locks"]
+    users_ws = ws_map["Users"]
+    audit_ws = ws_map["Audit_Log"]
+except Exception as e:
+    safe_stop("Could not open Google Spreadsheet. Check service account access to the sheet.", e)
 
-# ✅ Auth gate
+# Auth
 auth_gate(users_ws)
 logout_button()
 
 user_id = get_user_id()
 
-# clean expired locks
-cleanup_expired_locks(locks_ws)
+# cleanup locks
+try:
+    cleanup_expired_locks(locks_ws)
+except Exception:
+    pass
 
 # Load Correction_Log
-df_corr = load_correction_log_df_cached(corr_ws)
+try:
+    df_corr = load_correction_log_df_cached(corr_ws)
+except Exception as e:
+    safe_stop("Failed to load Correction_Log. Please refresh.", e)
+
 if df_corr.empty:
-    st.warning("Correction_Log is empty or missing headers.")
-    st.stop()
+    safe_stop("Correction_Log is empty or missing headers.")
 
 required_cols = {"_row", "_uuid", "Question", "old_value", "new_value"}
 missing = [c for c in required_cols if c not in df_corr.columns]
 if missing:
-    st.error(f"Correction_Log is missing required columns: {missing}")
-    st.stop()
+    safe_stop(f"Correction_Log is missing required columns: {missing}")
 
 pending_uuid_list_all = build_pending_uuid_list_cached(df_corr)
 if not pending_uuid_list_all:
     st.success("No pending translations found.")
     st.stop()
 
-# Filter out UUIDs locked by other users
 pending_uuid_list = [u for u in pending_uuid_list_all if not is_uuid_locked_by_other(locks_ws, u, user_id)]
 if not pending_uuid_list:
     st.info("All pending UUIDs are currently being processed by other users (locked). Please refresh later.")
     st.stop()
 
+
 # -----------------------------
-# UUID selection (with locking)
+# UUID selection
 # -----------------------------
 st.markdown("### Select UUID")
 
@@ -891,11 +894,14 @@ selected = st.selectbox(
 
 uuid_value = normalize_uuid(selected)
 
-# release previous lock if user changed UUID
+# release previous lock if changed
 prev_uuid = normalize_uuid(st.session_state.get("locked_uuid", ""))
 if prev_uuid and uuid_value and prev_uuid != uuid_value:
-    release_lock(locks_ws, prev_uuid, user_id)
-    audit_log(audit_ws, "RELEASE", prev_uuid, user_id, note="changed selection")
+    try:
+        release_lock(locks_ws, prev_uuid, user_id)
+        audit_log(audit_ws, "RELEASE", prev_uuid, user_id, note="changed selection")
+    except Exception:
+        pass
     st.session_state["locked_uuid"] = ""
 
 if not uuid_value:
@@ -903,18 +909,22 @@ if not uuid_value:
     st.stop()
 
 # acquire lock
-ok = acquire_lock(locks_ws, uuid_value, user_id)
+try:
+    ok = acquire_lock(locks_ws, uuid_value, user_id)
+except Exception as e:
+    safe_stop("Could not acquire lock (temporary). Please try again.", e)
+
 if not ok:
-    st.error("This UUID is currently selected by another user. Choose another UUID.")
-    st.session_state["uuid_select"] = ""
+    st.warning("This UUID is currently selected by another user. Choose another UUID.")
+    st.session_state.pop("uuid_select", None)
+
     st.rerun()
 
 st.session_state["locked_uuid"] = uuid_value
 
-# Pending rows for this UUID
+# pending items for this uuid
 df_corr_norm = df_corr.copy()
 df_corr_norm["_uuid_norm"] = safe_col(df_corr_norm, "_uuid").map(normalize_uuid)
-
 df_uuid_pending = df_corr_norm[
     (df_corr_norm["_uuid_norm"] == uuid_value) &
     (safe_col(df_corr_norm, "new_value") == "")
@@ -922,15 +932,17 @@ df_uuid_pending = df_corr_norm[
 
 if df_uuid_pending.empty:
     st.success("No pending items for this UUID.")
-    release_lock(locks_ws, uuid_value, user_id)
-    audit_log(audit_ws, "RELEASE", uuid_value, user_id, note="no pending items")
+    try:
+        release_lock(locks_ws, uuid_value, user_id)
+        audit_log(audit_ws, "RELEASE", uuid_value, user_id, note="no pending items")
+    except Exception:
+        pass
     st.session_state["locked_uuid"] = ""
     st.stop()
 
-# Audit lock
 audit_log(audit_ws, "LOCK", uuid_value, user_id, items_count=len(df_uuid_pending))
 
-# Cards layout
+# cards
 c1, c2, c3, c4 = st.columns([1, 2.4, 1, 1])
 with c1:
     mini_card("Pending items", f"{len(df_uuid_pending):,}", title_size="0.72rem", value_size="1.05rem", subtitle="")
@@ -946,6 +958,34 @@ with c4:
     mini_card("Clean_Data", "On Save", title_size="0.72rem", value_size="1.05rem", subtitle="")
 
 st.markdown("---")
+
+
+# -----------------------------
+# Back button logic (NEW)
+# -----------------------------
+def go_back():
+    # release lock
+    try:
+        cur = normalize_uuid(st.session_state.get("locked_uuid", ""))
+        if cur:
+            release_lock(locks_ws, cur, user_id)
+            audit_log(audit_ws, "RELEASE", cur, user_id, note="back button")
+    except Exception:
+        pass
+
+    # reset selection/state (IMPORTANT: do NOT assign uuid_select)
+    st.session_state["locked_uuid"] = ""
+    st.session_state.pop("uuid_select", None)  # ✅ instead of setting ""
+
+    # clear cached locks table quickly
+    try:
+        load_locks_df_cached.clear()
+    except Exception:
+        pass
+
+    st.rerun()
+
+
 
 # -----------------------------
 # Editor
@@ -984,14 +1024,20 @@ for rnum, new_val in zip(row_nums, new_vals):
         continue
     updates.append((rnum, new_val))
 
-a1, a2 = st.columns([1, 1.4])
-with a1:
+# buttons row (Back + Save)
+b1, b2, b3 = st.columns([1, 1, 2])
+with b1:
+    back = st.button("⬅ Back", type="secondary")
+with b2:
     save = st.button("Save", type="primary")
-with a2:
+with b3:
     st.markdown(
         f"<div style='opacity:0.72; padding-top:8px;'>Ready: <b>{len(updates)}</b> | Empty: <b>{len(empty_rows)}</b> | Invalid: <b>{len(invalid_rows)}</b></div>",
         unsafe_allow_html=True,
     )
+
+if back:
+    go_back()
 
 if invalid_rows:
     st.error(
@@ -1007,41 +1053,31 @@ if save:
     if invalid_rows:
         st.stop()
 
-    # 1) Update Correction_Log new_value
-    with st.spinner("Updating Correction_Log..."):
-        try:
+    try:
+        with st.spinner("Updating Correction_Log..."):
             retry_api(batch_update_new_values, corr_ws, updates=updates, new_value_col="new_value")
             translated_rows = [r for r, _v in updates]
             batch_update_translated_meta(corr_ws, translated_rows, user_id)
-        except Exception as e:
-            st.exception(e)
-            st.stop()
 
-    # Audit save
-    audit_log(audit_ws, "SAVE", uuid_value, user_id, items_count=len(updates), note="updated new_value + translated_meta")
+        audit_log(audit_ws, "SAVE", uuid_value, user_id, items_count=len(updates), note="updated new_value + translated_meta")
 
-    # Clear relevant caches
-    load_correction_log_df_cached.clear()
-    build_pending_uuid_list_cached.clear()
+        # clear caches that affect lists
+        load_correction_log_df_cached.clear()
+        build_pending_uuid_list_cached.clear()
 
-    # 2) Build + append Clean_Data row(s)
-    with st.spinner("Building Clean_Data row..."):
-        try:
+        with st.spinner("Building Clean_Data row..."):
             df_corr2 = load_correction_log_df_cached(corr_ws)
             df_corr2["_uuid_norm"] = safe_col(df_corr2, "_uuid").map(normalize_uuid)
             df_uuid_all = df_corr2[df_corr2["_uuid_norm"] == uuid_value].copy()
 
             if df_uuid_all.empty:
-                st.error("UUID not found in Correction_Log after save. Clean_Data not updated.")
-                st.stop()
+                safe_stop("UUID not found in Correction_Log after save. Clean_Data not updated.")
 
             if (safe_col(df_uuid_all, "new_value") == "").any():
-                st.warning("Some items for this UUID are still pending. Clean_Data was not updated.")
-                st.stop()
+                safe_stop("Some items for this UUID are still pending. Clean_Data was not updated.")
 
             if safe_col(df_uuid_all, "new_value").apply(looks_non_english).any():
-                st.warning("Some new_value entries are not English-only. Clean_Data was not updated.")
-                st.stop()
+                safe_stop("Some new_value entries are not English-only. Clean_Data was not updated.")
 
             ensure_clean_uuid_set(clean_ws)
             if clean_contains_uuid(clean_ws, uuid_value):
@@ -1049,16 +1085,11 @@ if save:
             else:
                 raw_headers = get_headers_cached(raw_ws)
                 if not raw_headers:
-                    st.error("Raw_Kobo_Data headers not found.")
-                    st.stop()
+                    safe_stop("Raw_Kobo_Data headers not found.")
 
                 raw_rows = fetch_raw_rows_for_uuid(raw_ws, uuid_value, raw_headers, uuid_col="_uuid")
                 if not raw_rows:
-                    raw_uuid_vals = get_uuid_column_cached(raw_ws, "_uuid")
-                    st.error("Raw_Kobo_Data row not found for this UUID.")
-                    st.caption(f"Raw UUID count (cached): {len(raw_uuid_vals):,}")
-                    st.caption("This usually indicates an invisible character mismatch or the UUID is not present in Raw_Kobo_Data.")
-                    st.stop()
+                    safe_stop("Raw_Kobo_Data row not found for this UUID.")
 
                 clean_headers = ensure_clean_headers_like_raw(clean_ws, raw_headers)
                 repl = build_replacements(df_uuid_all)
@@ -1066,7 +1097,6 @@ if save:
                 out_rows = []
                 for rr in raw_rows:
                     updated_row_raw_order = apply_replacements(raw_headers, rr, repl)
-
                     if clean_headers == raw_headers:
                         out_rows.append(updated_row_raw_order)
                     else:
@@ -1074,19 +1104,24 @@ if save:
                         out_rows.append([row_map.get(h, "") for h in clean_headers])
 
                 retry_api(clean_ws.append_rows, out_rows, value_input_option="USER_ENTERED")
-
                 add_uuid_to_clean_set(clean_ws, uuid_value)
                 st.success(f"Saved translations and appended {len(out_rows)} row(s) into Clean_Data.")
 
-        except Exception as e:
-            st.exception(e)
-            st.stop()
-        finally:
-            # release lock after save attempt
+    except Exception as e:
+        safe_stop("Save failed due to a temporary error. Please try again.", e)
+    finally:
+        # ALWAYS release lock (no matter what)
+        try:
             release_lock(locks_ws, uuid_value, user_id)
             audit_log(audit_ws, "RELEASE", uuid_value, user_id, note="released after save")
-            st.session_state["locked_uuid"] = ""
-            load_locks_df_cached.clear()
+        except Exception:
+            pass
+        st.session_state["locked_uuid"] = ""
+        st.session_state.pop("uuid_select", None)
 
-    st.session_state["uuid_select"] = ""
+        try:
+            load_locks_df_cached.clear()
+        except Exception:
+            pass
+
     st.rerun()
