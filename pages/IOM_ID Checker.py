@@ -20,6 +20,70 @@ load_css()
 page_header("🆔 IOM ID Checker", "Validate Raw Kobo IOM IDs against the Sample list and log missing IDs")
 
 # ============================================================
+# Theme (PDM)
+# ============================================================
+PDM_COLORS = {
+    "teal": "#14B8A6",
+    "blue": "#3B82F6",
+    "indigo": "#6366F1",
+    "violet": "#8B5CF6",
+    "pink": "#EC4899",
+    "amber": "#F59E0B",
+    "red": "#EF4444",
+    "green": "#10B981",
+    "slate": "#64748B",
+    "gray": "#9CA3AF",
+}
+
+# ============================================================
+# Altair Global Theme (modern, glass-friendly)
+# ============================================================
+def _pdm_altair_theme():
+    return {
+        "config": {
+            "background": "transparent",
+            "view": {"stroke": "transparent"},
+            "font": "Inter",
+            "axis": {
+                "labelColor": "#94A3B8",
+                "titleColor": "#CBD5E1",
+                "gridColor": "rgba(148,163,184,0.12)",
+                "domainColor": "rgba(148,163,184,0.18)",
+                "tickColor": "rgba(148,163,184,0.18)",
+                "labelFontSize": 12,
+                "titleFontSize": 12,
+                "titleFontWeight": 700,
+            },
+            "legend": {
+                "labelColor": "#CBD5E1",
+                "titleColor": "#E2E8F0",
+                "labelFontSize": 12,
+                "titleFontSize": 12,
+                "titleFontWeight": 800,
+                "symbolType": "circle",
+                "symbolSize": 120,
+            },
+            "title": {
+                "color": "#E2E8F0",
+                "fontSize": 14,
+                "fontWeight": 900,
+                "anchor": "start",
+                "offset": 10,
+            },
+            "tooltip": {
+                "content": "data",
+                "fill": "rgba(2,6,23,0.96)",
+                "stroke": "rgba(148,163,184,0.22)",
+                "color": "#E2E8F0",
+            },
+        }
+    }
+
+alt.themes.register("pdm_modern_iomid", _pdm_altair_theme)
+alt.themes.enable("pdm_modern_iomid")
+
+
+# ============================================================
 # Secrets + Client
 # ============================================================
 try:
@@ -28,7 +92,6 @@ try:
 except Exception:
     st.error("Secrets are not configured. Please set .streamlit/secrets.toml (service account + spreadsheet_id).")
     st.stop()
-
 
 
 # ============================================================
@@ -92,12 +155,9 @@ def _retry(fn, tries=3, sleep_s=0.6):
 def load_sheet_df(sheet_name: str) -> pd.DataFrame:
     """
     Fast + stable Google Sheet loader (cached):
-    - Avoids recreating gspread client on every rerun.
-    - Uses services.streamlit_gsheets (resource cache + retry).
-    - Reads via get_all_values() to preserve headers safely, then de-dupes duplicates.
+    - Uses get_all_values() to preserve headers safely, then de-dupes duplicates.
     """
     ws = get_worksheet(sa, spreadsheet_id, sheet_name)
-
     values = retry_api(ws.get_all_values)
     if not values:
         return pd.DataFrame()
@@ -122,6 +182,80 @@ def get_or_create_ws(title: str, rows: int = 5000, cols: int = 30):
 def chunked(lst, n: int):
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
+
+
+# ============================================================
+# Modern chart helpers
+# ============================================================
+def donut_chart(df_: pd.DataFrame, title: str, color_range: list[str]):
+    """
+    df_ columns: label, count
+    """
+    d = df_.copy()
+    total = float(d["count"].sum()) if len(d) else 0.0
+    d["pct"] = d["count"] / max(1.0, total)
+
+    donut = (
+        alt.Chart(d)
+        .mark_arc(innerRadius=82, outerRadius=128, cornerRadius=8)
+        .encode(
+            theta=alt.Theta("count:Q"),
+            color=alt.Color("label:N", scale=alt.Scale(range=color_range), legend=alt.Legend(title="")),
+            tooltip=[
+                alt.Tooltip("label:N", title=""),
+                alt.Tooltip("count:Q", title="Count"),
+                alt.Tooltip("pct:Q", title="Share", format=".1%"),
+            ],
+        )
+        .properties(height=320, title=title)
+    )
+
+    # center label (match%)
+    match_pct = 0.0
+    if len(d) and (d["label"] == "Matched").any():
+        match_pct = float(d.loc[d["label"] == "Matched", "pct"].iloc[0]) * 100.0
+    center = (
+        alt.Chart(pd.DataFrame({"t": [f"{match_pct:.0f}%"]}))
+        .mark_text(fontSize=28, fontWeight=900, color="#E2E8F0")
+        .encode(text="t:N")
+    )
+
+    return donut + center
+
+
+def modern_barh(df_: pd.DataFrame, title: str, x_title: str = "Count", max_rows: int = 20):
+    """
+    df_ columns: label, count
+    """
+    d = df_.copy()
+    if d.empty:
+        return alt.Chart(pd.DataFrame({"label": [], "count": []})).mark_bar().properties(height=320, title=title)
+
+    d = d.sort_values("count", ascending=False).head(max_rows).sort_values("count", ascending=True)
+
+    return (
+        alt.Chart(d)
+        .mark_bar(cornerRadiusTopRight=8, cornerRadiusBottomRight=8)
+        .encode(
+            x=alt.X("count:Q", title=x_title),
+            y=alt.Y("label:N", sort=None, title=""),
+            color=alt.Color("count:Q", scale=alt.Scale(scheme="turbo"), legend=None),
+            tooltip=[alt.Tooltip("label:N", title=""), alt.Tooltip("count:Q", title="Count")],
+        )
+        .properties(height=360, title=title)
+    )
+
+
+def trend_area_line(trend_df: pd.DataFrame, title: str):
+    base = alt.Chart(trend_df).encode(
+        x=alt.X("day:T", title="Date"),
+        y=alt.Y("count:Q", title="Records"),
+        tooltip=[alt.Tooltip("day:T", title="Date"), alt.Tooltip("count:Q", title="Count")],
+    )
+    area = base.mark_area(opacity=0.14).encode(color=alt.value(PDM_COLORS["indigo"]))
+    line = base.mark_line(strokeWidth=3).encode(color=alt.value(PDM_COLORS["indigo"]))
+    pts = base.mark_circle(size=70).encode(color=alt.value(PDM_COLORS["pink"]))
+    return (area + line + pts).properties(height=280, title=title)
 
 
 # ============================================================
@@ -179,9 +313,11 @@ if missing_cols:
 
 
 # ============================================================
-# Optional date filter (fast + safe)
+# Optional date filter (safe)
 # ============================================================
 filtered_raw = raw_df.copy()
+date_range_applied = False
+
 if RAW_DATE_COL in raw_df.columns:
     raw_dt = pd.to_datetime(raw_df[RAW_DATE_COL], errors="coerce")
     if raw_dt.notna().any():
@@ -201,6 +337,7 @@ if RAW_DATE_COL in raw_df.columns:
             start_d, end_d = date_range
             mask = (filtered_raw[RAW_DATE_COL].dt.date >= start_d) & (filtered_raw[RAW_DATE_COL].dt.date <= end_d)
             filtered_raw = filtered_raw.loc[mask].copy()
+            date_range_applied = True
 
 
 # ============================================================
@@ -240,7 +377,7 @@ raw_dups.columns = ["iom_id", "count"]
 
 
 # ============================================================
-# Layout
+# Tabs
 # ============================================================
 tab_overview, tab_not_found, tab_matched, tab_sync = st.tabs(
     ["Overview", "Not Found", "Matched", "Sync to IOM_Not_found"]
@@ -262,34 +399,59 @@ with tab_overview:
     with c1:
         kpi("Raw Records", f"{total_raw:,}", "")
     with c2:
-        kpi("In Range", f"{total_in_range:,}", "")
+        kpi("In Range", f"{total_in_range:,}", "Filtered window" if date_range_applied else "No date filter")
     with c3:
         kpi("Checked IDs", f"{total_checked:,}", "")
     with c4:
         kpi("Matched", f"{total_matched:,}", "")
     with c5:
-        kpi("Not Found", f"{total_not_found:,}", "")
+        kpi("Not Found", f"{total_not_found:,}", f"Unique missing: {unique_not_found:,}")
     with c6:
         kpi("Duplicate IDs", f"{dup_count:,}", "")
 
     st.markdown("---")
 
-    # Modern, simple diagnostic donut (kept because it is high-signal)
+    # Modern donut + center percent
     breakdown = pd.DataFrame(
-        [{"status": "Matched", "count": total_matched}, {"status": "Not Found", "count": total_not_found}]
+        [{"label": "Matched", "count": total_matched}, {"label": "Not Found", "count": total_not_found}]
+    )
+    st.altair_chart(
+        donut_chart(
+            breakdown,
+            title="Match Rate",
+            color_range=[PDM_COLORS["green"], PDM_COLORS["red"]],
+        ),
+        use_container_width=True,
     )
 
-    donut = (
-        alt.Chart(breakdown)
-        .mark_arc(innerRadius=70, outerRadius=120)
-        .encode(
-            theta="count:Q",
-            color=alt.Color("status:N", legend=alt.Legend(title="")),
-            tooltip=["status", "count"],
-        )
-        .properties(height=320, title="Match Rate")
-    )
-    st.altair_chart(donut, use_container_width=True)
+    # Optional: trend by day (if date column exists)
+    if RAW_DATE_COL in filtered_raw.columns and pd.api.types.is_datetime64_any_dtype(filtered_raw[RAW_DATE_COL]):
+        st.markdown("### Trend (Matched vs Not Found)")
+        tdf = check_df[[RAW_DATE_COL, "_match"]].copy()
+        tdf = tdf[tdf[RAW_DATE_COL].notna()].copy()
+        if not tdf.empty:
+            tdf["day"] = tdf[RAW_DATE_COL].dt.date
+            agg = tdf.groupby(["day", "_match"]).size().reset_index(name="count")
+            agg["day"] = pd.to_datetime(agg["day"])
+            agg["_match"] = agg["_match"].map({True: "Matched", False: "Not Found"})
+            trend = (
+                alt.Chart(agg)
+                .mark_line(strokeWidth=3)
+                .encode(
+                    x=alt.X("day:T", title="Date"),
+                    y=alt.Y("count:Q", title="Records"),
+                    color=alt.Color(
+                        "_match:N",
+                        scale=alt.Scale(range=[PDM_COLORS["green"], PDM_COLORS["red"]]),
+                        legend=alt.Legend(title=""),
+                    ),
+                    tooltip=[alt.Tooltip("day:T", title="Date"), alt.Tooltip("_match:N", title=""), alt.Tooltip("count:Q", title="Count")],
+                )
+                .properties(height=280, title="Daily match diagnostics")
+            )
+            st.altair_chart(trend, use_container_width=True)
+        else:
+            st.info("Trend skipped: no valid dates in selected range.")
 
     if dup_count:
         st.markdown("### Duplicate IDs in Raw Data (Top 25)")
@@ -298,6 +460,12 @@ with tab_overview:
 # ------------------ Not Found ------------------
 with tab_not_found:
     st.markdown("### Missing IDs (Unique list)")
+
+    # Show a modern bar for top missing IDs
+    if not not_found_ids.empty:
+        top_missing = not_found_ids.head(20).rename(columns={"iom_id": "label", "occurrences": "count"})
+        st.altair_chart(modern_barh(top_missing, "Top missing IDs (by occurrences)", x_title="Occurrences", max_rows=20), use_container_width=True)
+
     st.dataframe(
         not_found_ids.sort_values("occurrences", ascending=False),
         use_container_width=True,
@@ -312,8 +480,8 @@ with tab_not_found:
     )
 
     st.markdown("---")
-
     st.markdown("### Raw rows containing missing IDs (Preview)")
+
     preview_cols = [RAW_IOM_COL]
     for c in [RAW_DATE_COL, RAW_INTERVIEWER_COL, RAW_PROVINCE_COL]:
         if c in not_found_df.columns:
@@ -326,6 +494,7 @@ with tab_not_found:
 # ------------------ Matched ------------------
 with tab_matched:
     st.markdown("### Matched IDs (Preview)")
+
     preview_cols = [RAW_IOM_COL]
     for c in [RAW_DATE_COL, RAW_INTERVIEWER_COL, RAW_PROVINCE_COL]:
         if c in matched_df.columns:
@@ -427,3 +596,17 @@ with tab_sync:
         st.info("`IOM_Not_found` does not exist yet. Click **Sync now** to create it.")
     except Exception as e:
         st.warning(f"Could not load `{NOT_FOUND_SHEET}` preview: {e}")
+
+# ============================================================
+# Sidebar footer (correct placement)
+# ============================================================
+with st.sidebar:
+    st.markdown("---")
+    st.markdown(
+        """
+        <div class="pdm-sidebar-footer">
+          Made by Shabeer Ahmad Ahsaas
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
