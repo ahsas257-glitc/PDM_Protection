@@ -259,7 +259,6 @@ section[data-testid="stSidebar"] *{
 /* -------------------------
    Inputs
    ------------------------- */
-[data-baseweb="input"] > div,
 [data-baseweb="select"] > div{
   border-radius: var(--radius-md) !important;
   border: 1px solid var(--stroke) !important;
@@ -648,7 +647,6 @@ button[aria-label="Choose app theme"],
   opacity: 0.6;
   pointer-events: none;
 }
-
 /* =========================
    SIDEBAR FOOTER (bottom)
    ========================= */
@@ -677,4 +675,120 @@ section[data-testid="stSidebar"]{
   font-size: 0.85rem;
   text-align: center;
   letter-spacing: 0.2px;
+}
+/* =========================
+   SIDEBAR — DATE RANGE / DATE INPUT (Liquid Glass)
+   ========================= */
+
+/* Target date inputs (Streamlit uses BaseWeb DatePicker internally) */
+section[data-testid="stSidebar"] [data-baseweb="datepicker"]{
+  width: 100%;
+}
+
+/* The visible input shell */
+section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div{
+  border-radius: 16px !important;
+  border: 1px solid var(--stroke) !important;
+
+  background:
+    radial-gradient(circle at 25% 20%, rgba(96,165,250,0.18), transparent 55%),
+    radial-gradient(circle at 80% 70%, rgba(167,139,250,0.14), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05)) !important;
+
+  box-shadow:
+    0 10px 26px rgba(0,0,0,0.22),
+    inset 0 1px 0 rgba(255,255,255,0.14) !important;
+
+  /* In sidebar we allow a bit of blur for glass feel */
+  backdrop-filter: blur(10px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(140%) !important;
+
+  overflow: hidden !important;
+}
+
+/* Input itself */
+section[data-testid="stSidebar"] [data-baseweb="datepicker"] input{
+  background: transparent !important;
+  color: var(--text) !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.2px;
+}
+
+/* Placeholder / muted */
+section[data-testid="stSidebar"] [data-baseweb="datepicker"] input::placeholder{
+  color: var(--muted) !important;
+}
+
+/* Calendar icon button inside date input */
+section[data-testid="stSidebar"] [data-baseweb="datepicker"] button{
+  border-radius: 12px !important;
+  border: 1px solid rgba(255,255,255,0.10) !important;
+
+  background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04)) !important;
+  color: var(--text) !important;
+}
+
+/* Hover / focus ring */
+section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div:focus-within{
+  box-shadow:
+    0 0 0 4px rgba(96,165,250,0.22),
+    0 10px 26px rgba(0,0,0,0.22) !important;
+  border-color: rgba(96,165,250,0.55) !important;
+}
+
+/* Popup calendar (when opened) — glass menu */
+[data-baseweb="popover"] [data-baseweb="calendar"]{
+  border-radius: 16px !important;
+  border: 1px solid var(--stroke) !important;
+  background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06)) !important;
+
+  backdrop-filter: blur(10px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(140%) !important;
+
+  box-shadow: var(--shadow-lg) !important;
+  overflow: hidden !important;
+}
+
+/* Calendar text colors */
+[data-baseweb="calendar"] *{
+  color: var(--text) !important;
+}
+/* =========================
+   REMOVE DARK BACKGROUND
+   Behind Date Range (Sidebar)
+   ========================= */
+
+/* Outer wrapper of datepicker */
+section[data-testid="stSidebar"] [data-baseweb="datepicker"],
+section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div,
+section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div > div{
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Main input container (force glass only) */
+section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div{
+  background:
+    radial-gradient(circle at 25% 20%, rgba(96,165,250,0.18), transparent 55%),
+    radial-gradient(circle at 80% 70%, rgba(167,139,250,0.14), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05)) !important;
+
+  border: 1px solid var(--stroke) !important;
+  border-radius: 16px !important;
+
+  box-shadow:
+    0 10px 26px rgba(0,0,0,0.22),
+    inset 0 1px 0 rgba(255,255,255,0.14) !important;
+}
+
+/* Input itself: no dark fill */
+section[data-testid="stSidebar"] [data-baseweb="datepicker"] input{
+  background: transparent !important;
+}
+
+/* Remove any pseudo-element overlays */
+section[data-testid="stSidebar"] [data-baseweb="datepicker"]::before,
+section[data-testid="stSidebar"] [data-baseweb="datepicker"]::after{
+  display: none !important;
+  content: none !important;
 }
