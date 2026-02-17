@@ -265,7 +265,7 @@ def build_progress_charts(df: pd.DataFrame, metrics: dict):
             trend_df["day"] = pd.to_datetime(trend_df["day"])
 
     # --- Layout
-    st.markdown("### Analytics (modern charts)")
+
 
     c1, c2, c3 = st.columns([1, 1, 1])
     with c1:
