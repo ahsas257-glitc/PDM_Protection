@@ -7,13 +7,88 @@ from design.theme import load_css, page_header
 from design.components import kpi
 from services.streamlit_gsheets import get_worksheet
 
-
 # ============================================================
 # Page Config + Styling
 # ============================================================
-st.set_page_config(page_title="Dashboard | PDM", page_icon="", layout="wide")
+st.set_page_config(page_title="Dashboard | PDM", page_icon="📊", layout="wide")
 load_css()
 page_header("Dashboard", "Modern operational dashboard for monitoring and analysis")
+
+# ============================================================
+# Theme: Colors (PDM)
+# ============================================================
+PDM_COLORS = {
+    "teal": "#14B8A6",
+    "blue": "#3B82F6",
+    "indigo": "#6366F1",
+    "violet": "#8B5CF6",
+    "pink": "#EC4899",
+    "amber": "#F59E0B",
+    "red": "#EF4444",
+    "green": "#10B981",
+    "slate": "#64748B",
+    "gray": "#9CA3AF",
+    "muted_bg": "#0B1220",   # deep background hint (for chart tooltip polish)
+}
+
+STATUS_PALETTE = [
+    PDM_COLORS["teal"],
+    PDM_COLORS["blue"],
+    PDM_COLORS["indigo"],
+    PDM_COLORS["violet"],
+    PDM_COLORS["pink"],
+    PDM_COLORS["amber"],
+    PDM_COLORS["red"],
+    PDM_COLORS["green"],
+    PDM_COLORS["slate"],
+]
+
+# ============================================================
+# Altair Global Theme (Modern)
+# ============================================================
+def _pdm_altair_theme():
+    return {
+        "config": {
+            "background": "transparent",
+            "view": {"stroke": "transparent"},
+            "font": "Inter",
+            "axis": {
+                "labelColor": "#94A3B8",
+                "titleColor": "#CBD5E1",
+                "gridColor": "rgba(148,163,184,0.12)",
+                "domainColor": "rgba(148,163,184,0.18)",
+                "tickColor": "rgba(148,163,184,0.18)",
+                "labelFontSize": 12,
+                "titleFontSize": 12,
+                "titleFontWeight": 600,
+            },
+            "legend": {
+                "labelColor": "#CBD5E1",
+                "titleColor": "#E2E8F0",
+                "labelFontSize": 12,
+                "titleFontSize": 12,
+                "titleFontWeight": 700,
+                "symbolType": "circle",
+                "symbolSize": 140,
+            },
+            "title": {
+                "color": "#E2E8F0",
+                "fontSize": 14,
+                "fontWeight": 800,
+                "anchor": "start",
+                "offset": 10,
+            },
+            "tooltip": {
+                "content": "data",
+                "fill": "rgba(2,6,23,0.96)",
+                "stroke": "rgba(148,163,184,0.25)",
+                "color": "#E2E8F0",
+            },
+        }
+    }
+
+alt.themes.register("pdm_modern", _pdm_altair_theme)
+alt.themes.enable("pdm_modern")
 
 # ============================================================
 # Secrets
@@ -24,8 +99,6 @@ try:
 except Exception:
     st.error("Secrets are not configured. Please set .streamlit/secrets.toml (service account + spreadsheet_id).")
     st.stop()
-
-
 
 # ============================================================
 # Sheets
@@ -43,7 +116,6 @@ try:
     rejection_ws = get_worksheet(sa, spreadsheet_id, REJECTION_WORKSHEET)
 except Exception:
     rejection_ws = None
-
 
 # ============================================================
 # Targets (Hardcoded)
@@ -68,7 +140,6 @@ PROVINCE_TARGETS = [
 ]
 prov_targets_df = pd.DataFrame(PROVINCE_TARGETS)
 
-
 # ============================================================
 # Raw Kobo Columns (exact header text)
 # ============================================================
@@ -79,16 +150,11 @@ PROVINCE_COL = "A.8. Province"
 ASSIST_COL = "B.1. What kind of assistance did you receive from IOM Protection?"
 DISABILITY_COL = "A.12. Is there any person with disability in your family?"
 
-
 # ============================================================
 # Data Load
 # ============================================================
 @st.cache_data(ttl=60)
 def load_sheet_as_df(_ws) -> pd.DataFrame:
-    """
-    Uses get_all_values() to avoid duplicate-header errors from get_all_records().
-    Auto-uniques duplicate header names by appending __1, __2, ...
-    """
     values = _ws.get_all_values()
     if not values:
         return pd.DataFrame()
@@ -109,7 +175,6 @@ def load_sheet_as_df(_ws) -> pd.DataFrame:
 
     return pd.DataFrame(data, columns=new_headers)
 
-
 df = load_sheet_as_df(target_ws)
 
 rej_df = None
@@ -122,7 +187,6 @@ if rejection_ws is not None:
 if df.empty:
     st.warning("The worksheet has no data yet.")
     st.stop()
-
 
 # ============================================================
 # Helpers
@@ -153,10 +217,10 @@ def norm_yes_no_series(s: pd.Series) -> pd.Series:
 
 def progress_color(pct: float) -> str:
     if pct < 50:
-        return "#EF4444"  # red
+        return PDM_COLORS["red"]
     if pct < 80:
-        return "#F59E0B"  # amber
-    return "#10B981"      # green
+        return PDM_COLORS["amber"]
+    return PDM_COLORS["green"]
 
 def render_progress_line(label: str, received: int, target: int):
     pct = (received / target * 100) if target else 0.0
@@ -164,12 +228,12 @@ def render_progress_line(label: str, received: int, target: int):
     color = progress_color(pct)
     st.markdown(
         f"""
-        <div class="plabel">
-          <span><b>{label}</b></span>
-          <span>{pct:.1f}%</span>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <div style="font-size:0.9rem; opacity:0.85;"><b>{label}</b></div>
+          <div style="font-size:0.9rem; opacity:0.85;">{pct:.1f}%</div>
         </div>
-        <div class="pwrap">
-          <div class="pbar" style="width:{pct}%; background:{color};"></div>
+        <div style="width:100%; height:10px; background:rgba(148,163,184,0.18); border-radius:999px; overflow:hidden;">
+          <div style="width:{pct}%; height:100%; background:{color}; border-radius:999px;"></div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -189,6 +253,57 @@ def value_counts_df(s: pd.Series, top_n: int = 12, other_label: str = "Other"):
     vc["pct"] = vc["count"] / max(1, total)
     return vc
 
+def donut_chart(df_: pd.DataFrame, title: str, color_range=None):
+    color_range = color_range or STATUS_PALETTE
+    return (
+        alt.Chart(df_)
+        .mark_arc(innerRadius=80, outerRadius=135, cornerRadius=8)
+        .encode(
+            theta=alt.Theta("count:Q"),
+            color=alt.Color(
+                "category:N",
+                scale=alt.Scale(range=color_range),
+                legend=alt.Legend(title="")
+            ),
+            tooltip=[
+                alt.Tooltip("category:N", title="Category"),
+                alt.Tooltip("count:Q", title="Count"),
+                alt.Tooltip("pct:Q", title="Share", format=".1%"),
+            ],
+        )
+        .properties(height=360, title=title)
+    )
+
+def modern_barh(df_: pd.DataFrame, title: str, x_title="Count", y_title="", max_rows=20):
+    d = df_.copy()
+    d = d.sort_values("count", ascending=False).head(max_rows)
+    d = d.sort_values("count", ascending=True)
+    return (
+        alt.Chart(d)
+        .mark_bar(cornerRadiusTopRight=8, cornerRadiusBottomRight=8)
+        .encode(
+            x=alt.X("count:Q", title=x_title),
+            y=alt.Y("category:N", sort=None, title=y_title),
+            color=alt.Color("count:Q", scale=alt.Scale(scheme="turbo"), legend=None),
+            tooltip=[
+                alt.Tooltip("category:N", title="Category"),
+                alt.Tooltip("count:Q", title="Count"),
+                alt.Tooltip("pct:Q", title="Share", format=".1%"),
+            ],
+        )
+        .properties(height=360, title=title)
+    )
+
+def trend_area_line(trend_df: pd.DataFrame, title="Trend"):
+    base = alt.Chart(trend_df).encode(
+        x=alt.X("day:T", title="Date"),
+        y=alt.Y("count:Q", title="Interviews"),
+        tooltip=[alt.Tooltip("day:T", title="Date"), alt.Tooltip("count:Q", title="Count")],
+    )
+    area = base.mark_area(opacity=0.14).encode(color=alt.value(PDM_COLORS["indigo"]))
+    line = base.mark_line(strokeWidth=3).encode(color=alt.value(PDM_COLORS["indigo"]))
+    pts = base.mark_circle(size=80).encode(color=alt.value(PDM_COLORS["pink"]))
+    return (area + line + pts).properties(height=320, title=title)
 
 # ============================================================
 # Parse Dates
@@ -199,7 +314,6 @@ if DATE_COL not in df.columns:
 
 df[DATE_COL] = pd.to_datetime(df[DATE_COL], errors="coerce")
 df = df[df[DATE_COL].notna()].copy()
-
 
 # ============================================================
 # Sidebar Filters
@@ -230,7 +344,6 @@ if fdf.empty:
 
 last_update_dt = df[DATE_COL].max()
 last_update_str = last_update_dt.strftime("%Y-%m-%d %H:%M")
-
 
 # ============================================================
 # Normalize required fields (once)
@@ -267,7 +380,6 @@ if DISABILITY_COL in fdf.columns:
 else:
     fdf["_disability"] = "Unknown"
 
-
 # ============================================================
 # Global KPIs (filtered window)
 # ============================================================
@@ -294,56 +406,39 @@ if rej_df is not None and not rej_df.empty:
     else:
         recent_errors = int(len(rej_df))
 
-
 # ============================================================
-# Province summary table (general)
+# Province summary table (targets + received)
 # ============================================================
 prov_targets_lookup = {norm_key(r["province"]): r for r in PROVINCE_TARGETS}
 
 prov_received = (
     fdf.groupby("_province")
-       .agg(
-           received_total=("__dummy__", "size") if "__dummy__" in fdf.columns else ("_province", "size"),
-           received_male=("_gender", lambda x: int((x == "male").sum())),
-           received_female=("_gender", lambda x: int((x == "female").sum())),
-       )
-       .reset_index()
+       .size()
+       .reset_index(name="received_total")
 )
 
-# Ensure all provinces exist in summary (from target list)
 prov_base = prov_targets_df.copy()
 prov_base["_province"] = prov_base["province"].map(norm_key)
 
 prov_summary = prov_base.merge(prov_received, on="_province", how="left")
 prov_summary["received_total"] = prov_summary["received_total"].fillna(0).astype(int)
-prov_summary["received_male"] = prov_summary["received_male"].fillna(0).astype(int)
-prov_summary["received_female"] = prov_summary["received_female"].fillna(0).astype(int)
 
 prov_summary["remaining_total"] = (prov_summary["total"] - prov_summary["received_total"]).clip(lower=0).astype(int)
-prov_summary["remaining_male"] = (prov_summary["male"] - prov_summary["received_male"]).clip(lower=0).astype(int)
-prov_summary["remaining_female"] = (prov_summary["female"] - prov_summary["received_female"]).clip(lower=0).astype(int)
-
 prov_summary["progress_total_pct"] = (prov_summary["received_total"] / prov_summary["total"].replace(0, pd.NA) * 100).fillna(0.0)
-prov_summary["progress_male_pct"] = (prov_summary["received_male"] / prov_summary["male"].replace(0, pd.NA) * 100).fillna(0.0)
-prov_summary["progress_female_pct"] = (prov_summary["received_female"] / prov_summary["female"].replace(0, pd.NA) * 100).fillna(0.0)
 
 prov_summary_view = prov_summary[
-    ["province", "total", "male", "female",
-     "received_total", "received_male", "received_female",
-     "remaining_total", "remaining_male", "remaining_female",
-     "progress_total_pct"]
+    ["province", "total", "received_total", "remaining_total", "progress_total_pct"]
 ].sort_values("progress_total_pct", ascending=False)
 
 prov_summary_view["progress_total_pct"] = prov_summary_view["progress_total_pct"].map(lambda x: round(float(x), 1))
 
-
 # ============================================================
-# Interviewer summary table (general)
+# Interviewer summary
 # ============================================================
 interviewer_summary = (
     fdf.groupby("_interviewer")
        .agg(
-           received=("__dummy__", "size") if "__dummy__" in fdf.columns else ("_interviewer", "size"),
+           received=("_interviewer", "size"),
            male=("_gender", lambda x: int((x == "male").sum())),
            female=("_gender", lambda x: int((x == "female").sum())),
            disability_yes=("_disability", lambda x: int((x == "Yes").sum())),
@@ -355,8 +450,9 @@ interviewer_summary = (
 interviewer_summary["unknown_gender"] = (interviewer_summary["received"] - interviewer_summary["male"] - interviewer_summary["female"]).clip(lower=0).astype(int)
 interviewer_summary["disability_yes_pct"] = (interviewer_summary["disability_yes"] / interviewer_summary["received"].replace(0, pd.NA) * 100).fillna(0.0)
 interviewer_summary["disability_yes_pct"] = interviewer_summary["disability_yes_pct"].map(lambda x: round(float(x), 1))
+interviewer_summary = interviewer_summary.sort_values("received", ascending=False)
 
-# Add top province per interviewer (for quick analysis)
+# top province per interviewer
 top_prov = (
     fdf.groupby(["_interviewer", "_province_raw"])
        .size()
@@ -365,10 +461,7 @@ top_prov = (
        .drop_duplicates(subset=["_interviewer"])
        .rename(columns={"_interviewer": "interviewer", "_province_raw": "top_province", "n": "top_province_count"})
 )
-
 interviewer_summary = interviewer_summary.merge(top_prov, on="interviewer", how="left")
-interviewer_summary = interviewer_summary.sort_values("received", ascending=False)
-
 
 # ============================================================
 # Tabs
@@ -378,63 +471,74 @@ tab_overview, tab_assistance, tab_disability, tab_interviewers, tab_provinces = 
 )
 
 # ============================================================
-# OVERVIEW
+# OVERVIEW (Modern)
 # ============================================================
 with tab_overview:
-    st.markdown("### Targets")
-    a1, a2, a3 = st.columns(3)
-    with a1:
-        kpi("Total Target", f"{TOTAL_TARGET:,}", "")
-    with a2:
-        kpi("Male Target", f"{MALE_TARGET:,}", "")
-    with a3:
-        kpi("Female Target", f"{FEMALE_TARGET:,}", "")
-
-    st.markdown("### Received")
-    b1, b2, b3 = st.columns(3)
-    with b1:
+    # KPI row
+    k1, k2, k3, k4, k5 = st.columns(5)
+    with k1:
         kpi("Received (Total)", f"{received_total:,}", "")
-    with b2:
-        kpi("Received (Male)", f"{received_male:,}", "")
-    with b3:
-        kpi("Received (Female)", f"{received_female:,}", "")
-
-    st.markdown("### Remaining")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        kpi("Remaining (Total)", f"{remaining_total:,}", "")
-    with c2:
-        kpi("Remaining (Male)", f"{remaining_male:,}", "")
-    with c3:
-        kpi("Remaining (Female)", f"{remaining_female:,}", "")
-
-    st.markdown("### Progress")
-    d1, d2, d3 = st.columns(3)
-    with d1:
+    with k2:
         kpi("Progress (Total)", f"{progress_total:.1f}%", "")
-    with d2:
-        kpi("Progress (Male)", f"{progress_male:.1f}%", "")
-    with d3:
-        kpi("Progress (Female)", f"{progress_female:.1f}%", "")
-
-    st.markdown("### Progress Lines")
-    left, right = st.columns([1, 1])
-    with left:
-        render_progress_line("Total", received_total, TOTAL_TARGET)
-        render_progress_line("Male", received_male, MALE_TARGET)
-        render_progress_line("Female", received_female, FEMALE_TARGET)
-    with right:
+    with k3:
+        kpi("Remaining (Total)", f"{remaining_total:,}", "")
+    with k4:
         kpi("Errors (7d)", f"{recent_errors:,}", "")
-        # Optional quick disability insight
+    with k5:
         yes_count = int((fdf["_disability"] == "Yes").sum())
         yes_pct = (yes_count / max(1, len(fdf)) * 100)
         kpi("Disability (Yes)", f"{yes_pct:.1f}%", "")
 
+    st.markdown("### Progress")
+    a, b = st.columns([1, 1])
+    with a:
+        render_progress_line("Total", received_total, TOTAL_TARGET)
+        render_progress_line("Male", received_male, MALE_TARGET)
+        render_progress_line("Female", received_female, FEMALE_TARGET)
+    with b:
+        # Gender donut (modern)
+        gdf = pd.DataFrame(
+            [
+                {"category": "Male", "count": received_male},
+                {"category": "Female", "count": received_female},
+                {"category": "Unknown", "count": max(0, received_total - received_male - received_female)},
+            ]
+        )
+        gdf["pct"] = gdf["count"] / max(1, int(gdf["count"].sum()))
+        gdonut = donut_chart(gdf, "Gender Split", color_range=[PDM_COLORS["blue"], PDM_COLORS["pink"], PDM_COLORS["slate"]])
+        st.altair_chart(gdonut, use_container_width=True)
+
+    st.markdown("### Trend (Daily interviews)")
+    tdf = fdf[[DATE_COL]].copy()
+    tdf["day"] = tdf[DATE_COL].dt.date
+    trend = tdf.groupby("day").size().reset_index(name="count").sort_values("day")
+    st.altair_chart(trend_area_line(trend, title="Daily Volume"), use_container_width=True)
+
+    # Optional: Heatmap day/hour (if hour available)
+    st.markdown("### Activity heatmap (Day x Hour)")
+    hdf = fdf[[DATE_COL]].copy()
+    hdf["hour"] = hdf[DATE_COL].dt.hour
+    hdf["dow"] = hdf[DATE_COL].dt.day_name()
+    if hdf["hour"].notna().any():
+        heat = (
+            alt.Chart(hdf)
+            .mark_rect(cornerRadius=4)
+            .encode(
+                x=alt.X("hour:O", title="Hour"),
+                y=alt.Y("dow:N", title="Day", sort=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]),
+                color=alt.Color("count():Q", scale=alt.Scale(scheme="viridis"), legend=None),
+                tooltip=[alt.Tooltip("dow:N", title="Day"), alt.Tooltip("hour:O", title="Hour"), alt.Tooltip("count():Q", title="Count")],
+            )
+            .properties(height=260, title="When interviews happen (density)")
+        )
+        st.altair_chart(heat, use_container_width=True)
+    else:
+        st.info("Heatmap skipped: no hour information in the date column.")
+
     st.caption(f"Last data timestamp: {last_update_str} | Source: {TARGET_WORKSHEET}")
 
-
 # ============================================================
-# ASSISTANCE
+# ASSISTANCE (Modern)
 # ============================================================
 with tab_assistance:
     st.markdown("### Assistance Type Distribution")
@@ -445,45 +549,14 @@ with tab_assistance:
         top_n = st.slider("Top categories", min_value=5, max_value=25, value=12, step=1, key="assist_topn")
         dist_plot = value_counts_df(fdf["_assist"], top_n=top_n, other_label="Other")
 
-        donut = (
-            alt.Chart(dist_plot)
-            .mark_arc(innerRadius=75, outerRadius=125)
-            .encode(
-                theta=alt.Theta("count:Q"),
-                color=alt.Color("category:N", legend=alt.Legend(title="Assistance type")),
-                tooltip=[
-                    alt.Tooltip("category:N", title="Type"),
-                    alt.Tooltip("count:Q", title="Count"),
-                    alt.Tooltip("pct:Q", title="Share", format=".1%"),
-                ],
-            )
-            .properties(height=380)
-        )
-
-        bars = (
-            alt.Chart(dist_plot.sort_values("count", ascending=True))
-            .mark_bar()
-            .encode(
-                x=alt.X("count:Q", title="Count"),
-                y=alt.Y("category:N", sort=None, title=""),
-                tooltip=[
-                    alt.Tooltip("category:N", title="Type"),
-                    alt.Tooltip("count:Q", title="Count"),
-                    alt.Tooltip("pct:Q", title="Share", format=".1%"),
-                ],
-            )
-            .properties(height=380)
-        )
-
         c1, c2 = st.columns([1, 1])
         with c1:
-            st.altair_chart(donut, use_container_width=True)
+            st.altair_chart(donut_chart(dist_plot, "Assistance Mix"), use_container_width=True)
         with c2:
-            st.altair_chart(bars, use_container_width=True)
-
+            st.altair_chart(modern_barh(dist_plot, "Assistance (Ranked)", x_title="Count"), use_container_width=True)
 
 # ============================================================
-# DISABILITY
+# DISABILITY (Modern)
 # ============================================================
 with tab_disability:
     st.markdown("### Disability in Family (Yes/No)")
@@ -492,61 +565,63 @@ with tab_disability:
         st.warning(f"Column not found: {DISABILITY_COL}")
     else:
         dist = value_counts_df(fdf["_disability"], top_n=10, other_label="Other")
-        # Keep stable order if present
+        # stable ordering if present
         order = {"Yes": 0, "No": 1, "Unknown": 2}
         dist["sort_key"] = dist["category"].map(lambda x: order.get(x, 99))
         dist = dist.sort_values(["sort_key", "count"], ascending=[True, False]).drop(columns=["sort_key"])
 
-        donut = (
-            alt.Chart(dist)
-            .mark_arc(innerRadius=75, outerRadius=125)
-            .encode(
-                theta="count:Q",
-                color=alt.Color("category:N", legend=alt.Legend(title="")),
-                tooltip=["category", "count", alt.Tooltip("pct:Q", format=".1%")],
-            )
-            .properties(height=380)
-        )
-
-        bar = (
-            alt.Chart(dist)
-            .mark_bar()
-            .encode(
-                x=alt.X("category:N", title=""),
-                y=alt.Y("count:Q", title="Count"),
-                tooltip=["category", "count", alt.Tooltip("pct:Q", format=".1%")],
-            )
-            .properties(height=380)
-        )
-
         c1, c2 = st.columns([1, 1])
         with c1:
-            st.altair_chart(donut, use_container_width=True)
+            st.altair_chart(
+                donut_chart(dist, "Disability (Yes/No)", color_range=[PDM_COLORS["amber"], PDM_COLORS["teal"], PDM_COLORS["slate"]]),
+                use_container_width=True
+            )
         with c2:
+            # compact modern column bars
+            bar = (
+                alt.Chart(dist)
+                .mark_bar(cornerRadiusTopLeft=8, cornerRadiusTopRight=8)
+                .encode(
+                    x=alt.X("category:N", title=""),
+                    y=alt.Y("count:Q", title="Count"),
+                    color=alt.Color("category:N",
+                                    scale=alt.Scale(range=[PDM_COLORS["amber"], PDM_COLORS["teal"], PDM_COLORS["slate"]]),
+                                    legend=None),
+                    tooltip=["category", "count", alt.Tooltip("pct:Q", format=".1%")],
+                )
+                .properties(height=360, title="Distribution")
+            )
             st.altair_chart(bar, use_container_width=True)
 
-
 # ============================================================
-# INTERVIEWERS (General table + selector detail)
+# INTERVIEWERS (Modern)
 # ============================================================
 with tab_interviewers:
     st.markdown("### Interviewers (General Overview)")
     if INTERVIEWER_COL not in fdf.columns:
         st.warning(f"Column not found: {INTERVIEWER_COL}")
     else:
-        st.dataframe(
-            interviewer_summary[
-                ["interviewer", "received", "male", "female", "unknown_gender", "top_province", "top_province_count", "disability_yes_pct"]
-            ],
-            use_container_width=True,
-            hide_index=True,
-        )
+        # Top interviewers chart
+        top15 = interviewer_summary.head(15).copy()
+        top15_plot = top15.rename(columns={"interviewer": "category", "received": "count"})
+        top15_plot["pct"] = top15_plot["count"] / max(1, int(top15_plot["count"].sum()))
+
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            st.altair_chart(modern_barh(top15_plot, "Top Interviewers (by volume)", x_title="Interviews", max_rows=15), use_container_width=True)
+        with c2:
+            st.dataframe(
+                interviewer_summary[
+                    ["interviewer", "received", "male", "female", "unknown_gender", "top_province", "top_province_count", "disability_yes_pct"]
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
 
         st.markdown("---")
         st.markdown("### Interviewer Detail")
 
-        interviewer_list = interviewer_summary["interviewer"].dropna().unique().tolist()
-        interviewer_list = sorted(interviewer_list)
+        interviewer_list = sorted(interviewer_summary["interviewer"].dropna().unique().tolist())
         selected_interviewer = st.selectbox("Select interviewer", interviewer_list)
 
         idf = fdf[fdf["_interviewer"] == selected_interviewer].copy()
@@ -556,7 +631,6 @@ with tab_interviewers:
         i_female = int((idf["_gender"] == "female").sum())
         i_unknown = max(0, i_total - i_male - i_female)
 
-        st.markdown("#### KPIs")
         k1, k2, k3, k4 = st.columns(4)
         with k1:
             kpi("Received", f"{i_total:,}", "")
@@ -567,52 +641,35 @@ with tab_interviewers:
         with k4:
             kpi("Unknown", f"{i_unknown:,}", "")
 
-        # Keep only modern, analysis-useful charts
         c1, c2 = st.columns([1, 1])
-
         with c1:
-            # Gender donut (compact + clear)
             gdf = pd.DataFrame(
-                [
-                    {"category": "Male", "count": i_male},
-                    {"category": "Female", "count": i_female},
-                    {"category": "Unknown", "count": i_unknown},
-                ]
+                [{"category": "Male", "count": i_male},
+                 {"category": "Female", "count": i_female},
+                 {"category": "Unknown", "count": i_unknown}]
             )
             gdf["pct"] = gdf["count"] / max(1, int(gdf["count"].sum()))
-            gdonut = (
-                alt.Chart(gdf)
-                .mark_arc(innerRadius=75, outerRadius=125)
-                .encode(
-                    theta="count:Q",
-                    color=alt.Color("category:N", legend=alt.Legend(title="Gender")),
-                    tooltip=["category", "count", alt.Tooltip("pct:Q", format=".1%")],
-                )
-                .properties(height=360, title="Gender Split")
+            st.altair_chart(
+                donut_chart(gdf, "Gender Split (This interviewer)", color_range=[PDM_COLORS["blue"], PDM_COLORS["pink"], PDM_COLORS["slate"]]),
+                use_container_width=True
             )
-            st.altair_chart(gdonut, use_container_width=True)
-
         with c2:
-            # Assistance distribution for interviewer (ranked bar)
-            avc = value_counts_df(idf["_assist"], top_n=10, other_label="Other").sort_values("count", ascending=True)
-            abar = (
-                alt.Chart(avc)
-                .mark_bar()
-                .encode(
-                    x=alt.X("count:Q", title="Count"),
-                    y=alt.Y("category:N", sort=None, title=""),
-                    tooltip=["category", "count", alt.Tooltip("pct:Q", format=".1%")],
-                )
-                .properties(height=360, title="Assistance Types")
-            )
-            st.altair_chart(abar, use_container_width=True)
-
+            avc = value_counts_df(idf["_assist"], top_n=10, other_label="Other").sort_values("count", ascending=False)
+            avc_plot = avc.rename(columns={"category": "category", "count": "count"})
+            st.altair_chart(modern_barh(avc_plot, "Assistance Types (This interviewer)", x_title="Count", max_rows=12), use_container_width=True)
 
 # ============================================================
-# PROVINCES (General table + selector detail)
+# PROVINCES (Modern)
 # ============================================================
 with tab_provinces:
     st.markdown("### Provinces (General Overview)")
+
+    # Province ranking chart
+    pplot = prov_summary.copy()
+    pplot = pplot.rename(columns={"province": "category", "received_total": "count"})
+    pplot["pct"] = pplot["count"] / max(1, int(pplot["count"].sum()))
+    st.altair_chart(modern_barh(pplot[["category","count","pct"]], "Province Volume (Received)", x_title="Received", max_rows=20), use_container_width=True)
+
     st.dataframe(
         prov_summary_view,
         use_container_width=True,
@@ -646,87 +703,42 @@ with tab_provinces:
     p_progress_male = (p_received_male / p_target_male * 100) if p_target_male else 0.0
     p_progress_female = (p_received_female / p_target_female * 100) if p_target_female else 0.0
 
-    # Province cards: Targets / Received / Remaining / Progress
-    st.markdown("#### Targets")
-    t1, t2, t3 = st.columns(3)
+    t1, t2, t3, t4 = st.columns(4)
     with t1:
         kpi("Target (Total)", f"{p_target_total:,}", "")
     with t2:
-        kpi("Target (Male)", f"{p_target_male:,}", "")
-    with t3:
-        kpi("Target (Female)", f"{p_target_female:,}", "")
-
-    st.markdown("#### Received")
-    r1, r2, r3 = st.columns(3)
-    with r1:
         kpi("Received (Total)", f"{p_received_total:,}", "")
-    with r2:
-        kpi("Received (Male)", f"{p_received_male:,}", "")
-    with r3:
-        kpi("Received (Female)", f"{p_received_female:,}", "")
-
-    st.markdown("#### Remaining")
-    m1, m2, m3 = st.columns(3)
-    with m1:
+    with t3:
         kpi("Remaining (Total)", f"{p_remaining_total:,}", "")
-    with m2:
-        kpi("Remaining (Male)", f"{p_remaining_male:,}", "")
-    with m3:
-        kpi("Remaining (Female)", f"{p_remaining_female:,}", "")
-
-    st.markdown("#### Progress")
-    pr1, pr2, pr3 = st.columns(3)
-    with pr1:
-        kpi("Progress (Total)", f"{p_progress_total:.1f}%", "")
-    with pr2:
-        kpi("Progress (Male)", f"{p_progress_male:.1f}%", "")
-    with pr3:
-        kpi("Progress (Female)", f"{p_progress_female:.1f}%", "")
+    with t4:
+        kpi("Progress", f"{p_progress_total:.1f}%", "")
 
     st.markdown("#### Progress Lines")
     render_progress_line("Total", p_received_total, p_target_total)
     render_progress_line("Male", p_received_male, p_target_male)
     render_progress_line("Female", p_received_female, p_target_female)
 
-    # Keep charts minimal and analysis-oriented
     c1, c2 = st.columns([1, 1])
     with c1:
-        avc = value_counts_df(pdf["_assist"], top_n=10, other_label="Other").sort_values("count", ascending=True)
-        abar = (
-            alt.Chart(avc)
-            .mark_bar()
-            .encode(
-                x=alt.X("count:Q", title="Count"),
-                y=alt.Y("category:N", sort=None, title=""),
-                tooltip=["category", "count", alt.Tooltip("pct:Q", format=".1%")],
-            )
-            .properties(height=360, title="Assistance Types (This Province)")
-        )
-        st.altair_chart(abar, use_container_width=True)
-
+        avc = value_counts_df(pdf["_assist"], top_n=10, other_label="Other")
+        st.altair_chart(modern_barh(avc, "Assistance Types (This Province)", x_title="Count", max_rows=12), use_container_width=True)
     with c2:
         dvc = value_counts_df(pdf["_disability"], top_n=10, other_label="Other")
-        ddonut = (
-            alt.Chart(dvc)
-            .mark_arc(innerRadius=75, outerRadius=125)
-            .encode(
-                theta="count:Q",
-                color=alt.Color("category:N", legend=alt.Legend(title="")),
-                tooltip=["category", "count", alt.Tooltip("pct:Q", format=".1%")],
-            )
-            .properties(height=360, title="Disability (This Province)")
+        st.altair_chart(
+            donut_chart(dvc, "Disability (This Province)", color_range=[PDM_COLORS["amber"], PDM_COLORS["teal"], PDM_COLORS["slate"]]),
+            use_container_width=True
         )
-        st.altair_chart(ddonut, use_container_width=True)
 
+# ============================================================
+# Sidebar Footer
+# ============================================================
 with st.sidebar:
-    # ... بقیه آیتم‌های سایدبار شما
-
+    st.markdown("---")
     st.markdown(
         """
         <div class="pdm-sidebar-footer">
-          Made by Shabeer Ahmad Ahsas
+          Made by Shabeer Ahmad Ahsaas
         </div>
         """,
         unsafe_allow_html=True
     )
-
