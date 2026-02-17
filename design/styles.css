@@ -5,8 +5,8 @@
    Goals:
    1) Toolbar (top-right) "liquid glass"
    2) Three-dots menu stays available
-   3) ONLY "Choose app theme" is hidden/disabled as much as possible via stable selectors
-   4) Theme is forced to DARK regardless of user setting
+   3) NOTHING is hidden (no display:none)
+   4) Theme forced to DARK regardless of user setting
    ========================================================= */
 
 /* -------------------------
@@ -42,6 +42,9 @@
   --focus: rgba(96,165,250,0.60);
 
   --code-bg: rgba(255,255,255,0.06);
+
+  /* Header height (FIX for overlap) */
+  --pdm-header-h: 70px;
 }
 
 /* -------------------------
@@ -88,13 +91,6 @@ html, body, [class*="stApp"]{
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Container */
-.block-container{
-  padding-top: 1.1rem;
-  padding-bottom: 2rem;
-  max-width: 1220px;
-}
-
 /* Default headings/text */
 h1, h2, h3, h4, h5, h6{
   color: var(--text) !important;
@@ -107,6 +103,37 @@ p, li, span, label, div{
 
 /* Vertical spacing consistency */
 [data-testid="stVerticalBlock"]{ gap: 0.75rem; }
+
+/* =========================================================
+   FIX (FINAL): Header overlap / content hidden under sticky header
+   - Works across Streamlit DOM variants
+   ========================================================= */
+header[data-testid="stHeader"]{
+  height: var(--pdm-header-h) !important;
+  min-height: var(--pdm-header-h) !important;
+  max-height: var(--pdm-header-h) !important;
+}
+
+/* Apply safe top padding to main container (all variants) */
+[data-testid="stAppViewContainer"] section.main,
+[data-testid="stAppViewContainer"] .main,
+section.main,
+.main{
+  padding-top: calc(var(--pdm-header-h) + 12px) !important;
+}
+
+/* block-container should not add extra top padding (we already added on main) */
+[data-testid="stAppViewContainer"] section.main .block-container,
+[data-testid="stAppViewContainer"] .main .block-container,
+section.main .block-container,
+.main .block-container{
+  padding-top: 0 !important;
+  padding-bottom: 2rem !important;
+  max-width: 1220px !important;
+}
+
+/* Prevent anchor/title scroll from hiding under header */
+h1, h2, h3{ scroll-margin-top: calc(var(--pdm-header-h) + 16px); }
 
 /* -------------------------
    Tabs (Full round glow)
@@ -123,11 +150,7 @@ p, li, span, label, div{
   overflow: hidden;
   transition: background 160ms ease, box-shadow 160ms ease, transform 120ms ease;
 }
-
-/* remove default indicator if exists */
-.stTabs [data-baseweb="tab"]::after{
-  display: none !important;
-}
+.stTabs [data-baseweb="tab"]::after{ display: none !important; }
 
 .stTabs [data-baseweb="tab"]:hover{
   background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.07)) !important;
@@ -137,7 +160,6 @@ p, li, span, label, div{
     0 0 32px rgba(167,139,250,0.25) !important;
   transform: translateY(-1px);
 }
-
 .stTabs [aria-selected="true"]{
   background: linear-gradient(180deg, rgba(96,165,250,0.22), rgba(255,255,255,0.06)) !important;
   box-shadow:
@@ -146,10 +168,7 @@ p, li, span, label, div{
     0 0 38px rgba(167,139,250,0.35) !important;
   font-weight: 650;
 }
-
-.stTabs [data-baseweb="tab"]:active{
-  transform: scale(0.97);
-}
+.stTabs [data-baseweb="tab"]:active{ transform: scale(0.97); }
 
 /* -------------------------
    Sidebar (Liquid Glass)
@@ -206,7 +225,6 @@ section[data-testid="stSidebar"] *{
 
   overflow: hidden;
 }
-
 .pdm-card::before{
   content: "";
   position: absolute;
@@ -217,7 +235,6 @@ section[data-testid="stSidebar"] *{
   opacity: 0.8;
   pointer-events: none;
 }
-
 .pdm-card::after{
   content: "";
   position: absolute;
@@ -325,16 +342,32 @@ section[data-testid="stSidebar"] *{
 input::placeholder{ color: var(--muted) !important; }
 
 /* -------------------------
-   Dataframe
+   Dataframe (FIX: no clipping)
    ------------------------- */
 [data-testid="stDataFrame"]{
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
-  overflow: hidden;
+  overflow: visible !important; /* IMPORTANT */
   background: linear-gradient(180deg, var(--glass2), var(--glass));
   backdrop-filter: blur(calc(var(--glass-blur) - 2px)) saturate(var(--glass-sat));
   -webkit-backdrop-filter: blur(calc(var(--glass-blur) - 2px)) saturate(var(--glass-sat));
   box-shadow: var(--shadow-md);
+}
+[data-testid="stDataFrame"] > div{
+  border-radius: var(--radius-lg) !important;
+  overflow: hidden !important; /* keep rounding inside */
+}
+
+/* -------------------------
+   FIX: Altair/Vega charts clipping (donut cut)
+   ------------------------- */
+[data-testid="stVegaLiteChart"],
+[data-testid="stAltairChart"]{
+  overflow: visible !important;
+}
+[data-testid="stVegaLiteChart"] > div,
+[data-testid="stAltairChart"] > div{
+  overflow: visible !important;
 }
 
 /* -------------------------
@@ -367,8 +400,6 @@ code, pre{
 /* =========================================================
    TOOLBAR — Liquid Glass (crisp header text)
    ========================================================= */
-
-/* Header glass (NO blur to keep title sharp) */
 header[data-testid="stHeader"]{
   background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.06)) !important;
   border-bottom: 1px solid var(--stroke) !important;
@@ -422,7 +453,6 @@ header[data-testid="stHeader"] [data-testid="stToolbarActions"] button{
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
-
 header[data-testid="stHeader"] [data-testid="stToolbarActions"] button:hover{
   background: rgba(255,255,255,0.12) !important;
   box-shadow: 0 0 0 3px rgba(96,165,250,0.25);
@@ -452,52 +482,17 @@ header[data-testid="stHeader"] svg{
 }
 
 /* =========================================================
-   Disable/Hide ONLY "Choose app theme"
-   NOTE:
-   - Streamlit DOM differs by version.
-   - CSS cannot reliably match menu item text.
-   - We hide known testids / aria-label variants safely.
-   ========================================================= */
-
-/* Common Streamlit testids (varies by build) */
-[data-testid="stAppThemeButton"],
-[data-testid="stAppThemeMenuItem"],
-[data-testid="stChooseTheme"],
-[data-testid="stThemeSelector"]{
-  display: none !important;
-}
-
-/* aria-label / title variants (when present) */
-button[aria-label="Choose app theme"],
-button[title="Choose app theme"],
-[role="menuitem"][aria-label="Choose app theme"],
-[role="menuitem"][title="Choose app theme"]{
-  display: none !important;
-}
-
-/* Optional: if a Theme settings entry is present as separate label */
-button[aria-label="Settings: Theme"],
-[role="menuitem"][aria-label="Settings: Theme"]{
-  display: none !important;
-}
-
-/* =========================================================
    SIDEBAR — Date range / Date input (Liquid Glass)
-   Fix: remove dark background behind the input
    ========================================================= */
 section[data-testid="stSidebar"] [data-baseweb="datepicker"]{
   width: 100%;
   background: transparent !important;
 }
-
-/* clear wrappers that sometimes apply dark fills */
 section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div,
 section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div > div{
   background: transparent !important;
   box-shadow: none !important;
 }
-
-/* visible input container */
 section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div{
   border-radius: 16px !important;
   border: 1px solid var(--stroke) !important;
@@ -516,35 +511,27 @@ section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div{
 
   overflow: hidden !important;
 }
-
 section[data-testid="stSidebar"] [data-baseweb="datepicker"] input{
   background: transparent !important;
   color: var(--text) !important;
   font-weight: 650 !important;
   letter-spacing: 0.2px;
 }
-
 section[data-testid="stSidebar"] [data-baseweb="datepicker"] input::placeholder{
   color: var(--muted) !important;
 }
-
-/* Calendar icon button */
 section[data-testid="stSidebar"] [data-baseweb="datepicker"] button{
   border-radius: 12px !important;
   border: 1px solid rgba(255,255,255,0.10) !important;
   background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04)) !important;
   color: var(--text) !important;
 }
-
-/* focus ring */
 section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div:focus-within{
   box-shadow:
     0 0 0 4px rgba(96,165,250,0.22),
     0 10px 26px rgba(0,0,0,0.22) !important;
   border-color: rgba(96,165,250,0.55) !important;
 }
-
-/* Calendar popover itself */
 [data-baseweb="popover"] [data-baseweb="calendar"]{
   border-radius: 16px !important;
   border: 1px solid var(--stroke) !important;
@@ -556,7 +543,4 @@ section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div:focus-within{
   box-shadow: var(--shadow-lg) !important;
   overflow: hidden !important;
 }
-
-[data-baseweb="calendar"] *{
-  color: var(--text) !important;
-}
+[data-baseweb="calendar"] *{ color: var(--text) !important; }
