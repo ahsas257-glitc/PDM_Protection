@@ -2,11 +2,11 @@
    PDM — Liquid Glass Theme (DARK-LOCKED)
    Controlled from /design/styles.css
 
-   Goals in this version:
-   1) Toolbar (top-right) becomes fully "liquid glass"
+   Goals:
+   1) Toolbar (top-right) "liquid glass"
    2) Three-dots menu stays available
-   3) ONLY the "Choose app theme" option is disabled/hidden
-   4) Theme is still forced to DARK regardless of user setting
+   3) ONLY "Choose app theme" is hidden/disabled as much as possible via stable selectors
+   4) Theme is forced to DARK regardless of user setting
    ========================================================= */
 
 /* -------------------------
@@ -108,31 +108,85 @@ p, li, span, label, div{
 /* Vertical spacing consistency */
 [data-testid="stVerticalBlock"]{ gap: 0.75rem; }
 
-/* Tabs */
+/* -------------------------
+   Tabs (Full round glow)
+   ------------------------- */
 .stTabs [data-baseweb="tab-list"]{ gap: 10px; }
+
 .stTabs [data-baseweb="tab"]{
-  border-radius: 12px;
+  position: relative !important;
+  border-radius: 999px !important;
   padding: 8px 12px;
   border: 1px solid var(--stroke) !important;
   background: linear-gradient(180deg, var(--glass2), var(--glass)) !important;
   color: var(--text) !important;
+  overflow: hidden;
+  transition: background 160ms ease, box-shadow 160ms ease, transform 120ms ease;
 }
+
+/* remove default indicator if exists */
+.stTabs [data-baseweb="tab"]::after{
+  display: none !important;
+}
+
+.stTabs [data-baseweb="tab"]:hover{
+  background: linear-gradient(180deg, rgba(255,255,255,0.18), rgba(255,255,255,0.07)) !important;
+  box-shadow:
+    0 0 0 2px rgba(96,165,250,0.35),
+    0 0 18px rgba(96,165,250,0.45),
+    0 0 32px rgba(167,139,250,0.25) !important;
+  transform: translateY(-1px);
+}
+
 .stTabs [aria-selected="true"]{
-  box-shadow: 0 0 0 4px rgba(96,165,250,0.18);
+  background: linear-gradient(180deg, rgba(96,165,250,0.22), rgba(255,255,255,0.06)) !important;
+  box-shadow:
+    0 0 0 2px rgba(96,165,250,0.55),
+    0 0 22px rgba(96,165,250,0.55),
+    0 0 38px rgba(167,139,250,0.35) !important;
+  font-weight: 650;
+}
+
+.stTabs [data-baseweb="tab"]:active{
+  transform: scale(0.97);
 }
 
 /* -------------------------
    Sidebar (Liquid Glass)
    ------------------------- */
 section[data-testid="stSidebar"]{
-  background: linear-gradient(180deg, var(--glass2), var(--glass));
-  border-right: 1px solid var(--stroke);
-  box-shadow: 12px 0 40px rgba(0,0,0,0.10);
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  background: linear-gradient(180deg, var(--glass2), var(--glass)) !important;
+  border-right: 1px solid var(--stroke) !important;
+  box-shadow: 12px 0 40px rgba(0,0,0,0.10) !important;
+  backdrop-filter: blur(8px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(8px) saturate(135%) !important;
+  position: relative;
 }
 section[data-testid="stSidebar"] *{
   color: var(--text) !important;
+  text-shadow: none !important;
+}
+
+/* Sidebar footer (bottom sticky) */
+.pdm-sidebar-footer{
+  position: sticky;
+  bottom: 10px;
+  margin-top: 18px;
+  padding: 10px 12px;
+
+  border-radius: 14px;
+  border: 1px solid var(--stroke);
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
+
+  backdrop-filter: blur(6px) saturate(130%);
+  -webkit-backdrop-filter: blur(6px) saturate(130%);
+
+  box-shadow: var(--shadow-md);
+
+  color: var(--muted) !important;
+  font-size: 0.85rem;
+  text-align: center;
+  letter-spacing: 0.2px;
 }
 
 /* -------------------------
@@ -152,6 +206,7 @@ section[data-testid="stSidebar"] *{
 
   overflow: hidden;
 }
+
 .pdm-card::before{
   content: "";
   position: absolute;
@@ -162,6 +217,7 @@ section[data-testid="stSidebar"] *{
   opacity: 0.8;
   pointer-events: none;
 }
+
 .pdm-card::after{
   content: "";
   position: absolute;
@@ -183,7 +239,7 @@ section[data-testid="stSidebar"] *{
 }
 
 /* -------------------------
-   Page Header Card (NEW)
+   Page Header Card
    ------------------------- */
 .pdm-page-header{
   display: flex;
@@ -257,7 +313,7 @@ section[data-testid="stSidebar"] *{
 }
 
 /* -------------------------
-   Inputs
+   Inputs / Select
    ------------------------- */
 [data-baseweb="select"] > div{
   border-radius: var(--radius-md) !important;
@@ -292,11 +348,11 @@ code, pre{
 }
 
 /* -------------------------
-   Progress line (used in Dashboard)
+   Progress line (Dashboard)
    ------------------------- */
 .pwrap{
   width: 100%;
-  background: rgba(233,237,243,0.35);
+  background: rgba(233,237,243,0.12);
   border-radius: 999px;
   height: 10px;
   overflow: hidden;
@@ -309,214 +365,40 @@ code, pre{
 }
 
 /* =========================================================
-   TOOLBAR — Liquid Glass + disable ONLY "Choose app theme"
+   TOOLBAR — Liquid Glass (crisp header text)
    ========================================================= */
 
-/* 1) Make the top toolbar glassy (do NOT hide it) */
+/* Header glass (NO blur to keep title sharp) */
 header[data-testid="stHeader"]{
-  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04)) !important;
-  border-bottom: 1px solid var(--stroke) !important;
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-}
-
-/* Toolbar container (some versions use stToolbar / stToolbarActions) */
-[data-testid="stToolbar"],
-[data-testid="stToolbarActions"],
-[data-testid="stToolbarActionButtons"]{
-  background: transparent !important;
-}
-
-/* Make toolbar icon buttons glass */
-header[data-testid="stHeader"] button,
-[data-testid="stToolbar"] button{
-  border-radius: 12px !important;
-  border: 1px solid var(--stroke) !important;
-  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04)) !important;
-  box-shadow: var(--shadow-md) !important;
-  color: var(--text) !important;
-}
-header[data-testid="stHeader"] button:hover,
-[data-testid="stToolbar"] button:hover{
-  background: linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.06)) !important;
-  transform: translateY(-1px);
-}
-
-/* 2) Style the opened "three dots" menu / popover as glass */
-[data-baseweb="popover"] [role="dialog"],
-[data-baseweb="popover"] [data-baseweb="menu"]{
-  border-radius: 16px !important;
-  border: 1px solid var(--stroke) !important;
-  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05)) !important;
-  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
-  box-shadow: var(--shadow-lg) !important;
-}
-
-/* Menu items typography */
-[data-baseweb="menu"] *{
-  color: var(--text) !important;
-}
-
-/* 3) Disable/Hide ONLY the "Choose app theme" entry.
-   Streamlit DOM differs by version; we include multiple safe selectors.
-   Any that match will hide that single menu item without breaking the menu.
-*/
-
-/* Most likely: a dedicated testid (varies by version) */
-[data-testid="stAppThemeButton"],
-[data-testid="stAppThemeMenuItem"],
-[data-testid="stChooseTheme"],
-[data-testid="stThemeSelector"]{
-  display: none !important;
-}
-
-/* If it's a button with aria-label (some builds use this) */
-button[aria-label="Choose app theme"],
-button[title="Choose app theme"]{
-  display: none !important;
-}
-
-/* Some builds render it as a menuitem role */
-[role="menuitem"][aria-label="Choose app theme"],
-[role="menuitem"][title="Choose app theme"]{
-  display: none !important;
-}
-
-/* Optional: also block theme “settings” entry if it appears under other labels */
-button[aria-label="Settings: Theme"],
-[role="menuitem"][aria-label="Settings: Theme"]{
-  display: none !important;
-}
-/* =========================
-   Toolbar: FULL glass (NO BLUR so title remains sharp)
-   Sidebar: slightly BLURRED glass
-   (Paste these overrides at the END of your styles.css)
-   ========================= */
-
-/* ---------- TOOLBAR / HEADER (glass, NO blur) ---------- */
-header[data-testid="stHeader"]{
-  /* Stronger glass look */
-  background: linear-gradient(
-    180deg,
-    rgba(255,255,255,0.14),
-    rgba(255,255,255,0.06)
-  ) !important;
-
+  background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.06)) !important;
   border-bottom: 1px solid var(--stroke) !important;
   box-shadow: 0 10px 26px rgba(0,0,0,0.22) !important;
 
-  /* مهم: بلر را کامل خاموش می‌کنیم تا نوشته‌ها واضح بمانند */
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+
+  position: sticky;
+  top: 0;
+  z-index: 999;
 }
 
-/* Toolbar containers remain transparent */
+/* Toolbar containers */
 [data-testid="stToolbar"],
 [data-testid="stToolbarActions"],
 [data-testid="stToolbarActionButtons"]{
   background: transparent !important;
 }
 
-/* Toolbar icon buttons: glass, no blur */
-header[data-testid="stHeader"] button,
-[data-testid="stToolbar"] button{
-  border-radius: 12px !important;
-  border: 1px solid var(--stroke) !important;
-
-  background: linear-gradient(
-    180deg,
-    rgba(255,255,255,0.14),
-    rgba(255,255,255,0.06)
-  ) !important;
-
-  box-shadow: var(--shadow-md) !important;
-  color: var(--text) !important;
-
-  /* no blur on buttons either */
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-
-  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
-}
-
-header[data-testid="stHeader"] button:hover,
-[data-testid="stToolbar"] button:hover{
-  background: linear-gradient(
-    180deg,
-    rgba(255,255,255,0.20),
-    rgba(255,255,255,0.08)
-  ) !important;
-
-  border-color: rgba(255,255,255,0.22) !important;
-  transform: translateY(-1px);
-}
-
-/* ---------- Three-dots menu popover: keep glass BUT minimal blur (optional) ---------- */
-[data-baseweb="popover"] [role="dialog"],
-[data-baseweb="popover"] [data-baseweb="menu"]{
-  border-radius: 16px !important;
-  border: 1px solid var(--stroke) !important;
-  background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06)) !important;
-
-  /* بلر کم، چون داخل منو نوشته‌ها باید واضح باشند */
-  backdrop-filter: blur(6px) saturate(130%) !important;
-  -webkit-backdrop-filter: blur(6px) saturate(130%) !important;
-
-  box-shadow: var(--shadow-lg) !important;
-}
-
-/* ---------- SIDEBAR: slightly BLURRED glass ---------- */
-section[data-testid="stSidebar"]{
-  background: linear-gradient(180deg, var(--glass2), var(--glass)) !important;
-  border-right: 1px solid var(--stroke) !important;
-  box-shadow: 12px 0 40px rgba(0,0,0,0.10) !important;
-
-  /* کمی بلر (کمتر از قبل) */
-  backdrop-filter: blur(8px) saturate(135%) !important;
-  -webkit-backdrop-filter: blur(8px) saturate(135%) !important;
-}
-
-/* (Optional) Sidebar inner elements keep crisp */
-section[data-testid="stSidebar"] *{
-  color: var(--text) !important;
-  text-shadow: none !important;
-}
-/* =========================
-   ROUND GLASS BACKGROUND
-   For Deploy + Three Dots Buttons
-   ========================= */
-
-/* Toolbar container */
-header[data-testid="stHeader"]{
-  position: relative;
-}
-
-/* Wrap area (right side buttons) */
+/* Round glass capsule behind top-right actions */
 header[data-testid="stHeader"] [data-testid="stToolbarActions"]{
-  position: relative;
   padding: 6px 10px !important;
   border-radius: 999px !important;
-
-  /* Glass halo */
-  background:
-    radial-gradient(
-      circle at 30% 30%,
-      rgba(96,165,250,0.25),
-      transparent 55%
-    ),
-    radial-gradient(
-      circle at 70% 70%,
-      rgba(167,139,250,0.22),
-      transparent 60%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(255,255,255,0.14),
-      rgba(255,255,255,0.05)
-    ) !important;
-
   border: 1px solid var(--stroke) !important;
+
+  background:
+    radial-gradient(circle at 30% 30%, rgba(96,165,250,0.25), transparent 55%),
+    radial-gradient(circle at 70% 70%, rgba(167,139,250,0.22), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.05)) !important;
 
   box-shadow:
     0 8px 24px rgba(0,0,0,0.35),
@@ -529,163 +411,93 @@ header[data-testid="stHeader"] [data-testid="stToolbarActions"]{
 /* Buttons inside (Deploy + dots) */
 header[data-testid="stHeader"] [data-testid="stToolbarActions"] button{
   border-radius: 999px !important;
-
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
 
   padding: 6px 12px !important;
   color: var(--text) !important;
-
   font-weight: 600;
+
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
-/* Hover glow */
 header[data-testid="stHeader"] [data-testid="stToolbarActions"] button:hover{
   background: rgba(255,255,255,0.12) !important;
   box-shadow: 0 0 0 3px rgba(96,165,250,0.25);
 }
 
-/* Three dots icon size fix */
+/* subtle icon depth */
 header[data-testid="stHeader"] svg{
   filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));
 }
-/* =========================
-   TABS — FULL ROUND HOVER GLOW
-   ========================= */
 
-/* Remove default bottom indicator (red/blue line) */
-.stTabs [data-baseweb="tab"]::after{
+/* =========================================================
+   Three-dots menu popover (glass but readable)
+   ========================================================= */
+[data-baseweb="popover"] [role="dialog"],
+[data-baseweb="popover"] [data-baseweb="menu"]{
+  border-radius: 16px !important;
+  border: 1px solid var(--stroke) !important;
+  background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06)) !important;
+
+  backdrop-filter: blur(6px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(6px) saturate(130%) !important;
+
+  box-shadow: var(--shadow-lg) !important;
+}
+[data-baseweb="menu"] *{
+  color: var(--text) !important;
+}
+
+/* =========================================================
+   Disable/Hide ONLY "Choose app theme"
+   NOTE:
+   - Streamlit DOM differs by version.
+   - CSS cannot reliably match menu item text.
+   - We hide known testids / aria-label variants safely.
+   ========================================================= */
+
+/* Common Streamlit testids (varies by build) */
+[data-testid="stAppThemeButton"],
+[data-testid="stAppThemeMenuItem"],
+[data-testid="stChooseTheme"],
+[data-testid="stThemeSelector"]{
   display: none !important;
 }
 
-/* Base tab */
-.stTabs [data-baseweb="tab"]{
-  position: relative !important;
-
-  border-radius: 999px !important; /* fully rounded */
-  overflow: hidden;
-
-  transition:
-    background 160ms ease,
-    box-shadow 160ms ease,
-    transform 120ms ease;
-}
-
-/* Hover: full circular glow */
-.stTabs [data-baseweb="tab"]:hover{
-  background: linear-gradient(
-    180deg,
-    rgba(255,255,255,0.18),
-    rgba(255,255,255,0.07)
-  ) !important;
-
-  box-shadow:
-    0 0 0 2px rgba(96,165,250,0.35),
-    0 0 18px rgba(96,165,250,0.45),
-    0 0 32px rgba(167,139,250,0.25) !important;
-
-  transform: translateY(-1px);
-}
-
-/* Selected tab: stronger rounded glow */
-.stTabs [aria-selected="true"]{
-  background: linear-gradient(
-    180deg,
-    rgba(96,165,250,0.22),
-    rgba(255,255,255,0.06)
-  ) !important;
-
-  box-shadow:
-    0 0 0 2px rgba(96,165,250,0.55),
-    0 0 22px rgba(96,165,250,0.55),
-    0 0 38px rgba(167,139,250,0.35) !important;
-
-  font-weight: 650;
-}
-
-/* Active (click) feedback */
-.stTabs [data-baseweb="tab"]:active{
-  transform: scale(0.97);
-}
-/* =========================
-   SETTINGS — Disable "Choose app theme"
-   ========================= */
-
-/* Disable theme dropdown container */
-div:has(> label:contains("Choose app theme")),
-div:has(> span:contains("Choose app theme")){
-  pointer-events: none !important;
-  opacity: 0.45 !important;
-  filter: grayscale(80%);
-}
-
-/* Fallback: disable select when aria-label exists */
-select[aria-label="Choose app theme"],
+/* aria-label / title variants (when present) */
 button[aria-label="Choose app theme"],
-[role="combobox"][aria-label="Choose app theme"]{
-  pointer-events: none !important;
-  opacity: 0.45 !important;
-  cursor: not-allowed !important;
+button[title="Choose app theme"],
+[role="menuitem"][aria-label="Choose app theme"],
+[role="menuitem"][title="Choose app theme"]{
+  display: none !important;
 }
 
-/* If rendered as BaseWeb select */
-[data-baseweb="select"] button[aria-haspopup="listbox"]{
-  pointer-events: none !important;
-  opacity: 0.45 !important;
-  cursor: not-allowed !important;
+/* Optional: if a Theme settings entry is present as separate label */
+button[aria-label="Settings: Theme"],
+[role="menuitem"][aria-label="Settings: Theme"]{
+  display: none !important;
 }
 
-/* Optional: small lock icon overlay */
-[data-baseweb="select"]::after{
-  content: "🔒";
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 0.9rem;
-  opacity: 0.6;
-  pointer-events: none;
-}
-/* =========================
-   SIDEBAR FOOTER (bottom)
-   ========================= */
-section[data-testid="stSidebar"]{
-  position: relative;
-}
-
-.pdm-sidebar-footer{
-  position: sticky;
-  bottom: 10px;
-
-  margin-top: 18px;
-  padding: 10px 12px;
-
-  border-radius: 14px;
-  border: 1px solid var(--stroke);
-  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
-
-  /* کمی شیشه‌ای ولی خوانا */
-  backdrop-filter: blur(6px) saturate(130%);
-  -webkit-backdrop-filter: blur(6px) saturate(130%);
-
-  box-shadow: var(--shadow-md);
-
-  color: var(--muted) !important;
-  font-size: 0.85rem;
-  text-align: center;
-  letter-spacing: 0.2px;
-}
-/* =========================
-   SIDEBAR — DATE RANGE / DATE INPUT (Liquid Glass)
-   ========================= */
-
-/* Target date inputs (Streamlit uses BaseWeb DatePicker internally) */
+/* =========================================================
+   SIDEBAR — Date range / Date input (Liquid Glass)
+   Fix: remove dark background behind the input
+   ========================================================= */
 section[data-testid="stSidebar"] [data-baseweb="datepicker"]{
   width: 100%;
+  background: transparent !important;
 }
 
-/* The visible input shell */
+/* clear wrappers that sometimes apply dark fills */
+section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div,
+section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div > div{
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* visible input container */
 section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div{
   border-radius: 16px !important;
   border: 1px solid var(--stroke) !important;
@@ -699,14 +511,12 @@ section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div{
     0 10px 26px rgba(0,0,0,0.22),
     inset 0 1px 0 rgba(255,255,255,0.14) !important;
 
-  /* In sidebar we allow a bit of blur for glass feel */
   backdrop-filter: blur(10px) saturate(140%) !important;
   -webkit-backdrop-filter: blur(10px) saturate(140%) !important;
 
   overflow: hidden !important;
 }
 
-/* Input itself */
 section[data-testid="stSidebar"] [data-baseweb="datepicker"] input{
   background: transparent !important;
   color: var(--text) !important;
@@ -714,21 +524,19 @@ section[data-testid="stSidebar"] [data-baseweb="datepicker"] input{
   letter-spacing: 0.2px;
 }
 
-/* Placeholder / muted */
 section[data-testid="stSidebar"] [data-baseweb="datepicker"] input::placeholder{
   color: var(--muted) !important;
 }
 
-/* Calendar icon button inside date input */
+/* Calendar icon button */
 section[data-testid="stSidebar"] [data-baseweb="datepicker"] button{
   border-radius: 12px !important;
   border: 1px solid rgba(255,255,255,0.10) !important;
-
   background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04)) !important;
   color: var(--text) !important;
 }
 
-/* Hover / focus ring */
+/* focus ring */
 section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div:focus-within{
   box-shadow:
     0 0 0 4px rgba(96,165,250,0.22),
@@ -736,7 +544,7 @@ section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div:focus-within{
   border-color: rgba(96,165,250,0.55) !important;
 }
 
-/* Popup calendar (when opened) — glass menu */
+/* Calendar popover itself */
 [data-baseweb="popover"] [data-baseweb="calendar"]{
   border-radius: 16px !important;
   border: 1px solid var(--stroke) !important;
@@ -749,46 +557,6 @@ section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div:focus-within{
   overflow: hidden !important;
 }
 
-/* Calendar text colors */
 [data-baseweb="calendar"] *{
   color: var(--text) !important;
-}
-/* =========================
-   REMOVE DARK BACKGROUND
-   Behind Date Range (Sidebar)
-   ========================= */
-
-/* Outer wrapper of datepicker */
-section[data-testid="stSidebar"] [data-baseweb="datepicker"],
-section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div,
-section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div > div{
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-/* Main input container (force glass only) */
-section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div{
-  background:
-    radial-gradient(circle at 25% 20%, rgba(96,165,250,0.18), transparent 55%),
-    radial-gradient(circle at 80% 70%, rgba(167,139,250,0.14), transparent 60%),
-    linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05)) !important;
-
-  border: 1px solid var(--stroke) !important;
-  border-radius: 16px !important;
-
-  box-shadow:
-    0 10px 26px rgba(0,0,0,0.22),
-    inset 0 1px 0 rgba(255,255,255,0.14) !important;
-}
-
-/* Input itself: no dark fill */
-section[data-testid="stSidebar"] [data-baseweb="datepicker"] input{
-  background: transparent !important;
-}
-
-/* Remove any pseudo-element overlays */
-section[data-testid="stSidebar"] [data-baseweb="datepicker"]::before,
-section[data-testid="stSidebar"] [data-baseweb="datepicker"]::after{
-  display: none !important;
-  content: none !important;
 }
