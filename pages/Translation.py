@@ -3,11 +3,13 @@ import uuid as uuidlib
 import random
 import socket
 from datetime import datetime, timezone, timedelta
+from typing import Any
 
 import streamlit as st
 import pandas as pd
 import bcrypt
 import requests
+from gspread.exceptions import APIError
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 
@@ -18,6 +20,9 @@ from services.sheets import (
     batch_update_new_values,
 )
 
+# ============================================================
+# Page Config
+# ============================================================
 st.set_page_config(page_title="Translation | PDM", page_icon="🌐", layout="wide")
 load_css()
 page_header("🌐 Translation", "Translate pending items and build Clean_Data row on Save")
@@ -29,25 +34,21 @@ USERS_SHEET_NAME = "Users"
 AUDIT_SHEET_NAME = "Audit_Log"
 
 
-# -----------------------------
-# Safe stop (no traceback)
-# -----------------------------
+# ============================================================
+# Safe stop (no traceback in UI)
+# ============================================================
 def safe_stop(msg: str, exc: Exception | None = None):
     st.error(msg)
     if exc is not None:
-        # hidden details in expander (optional; keeps UI clean)
         with st.expander("Details (for admin)"):
             st.write(str(exc))
     st.stop()
 
 
-# -----------------------------
-# Retry wrapper (429 + network-safe)
-# -----------------------------
+# ============================================================
+# Retry wrapper (429 + transient network)
+# ============================================================
 def retry_api(fn, *args, **kwargs):
-    """
-    Retries Google Sheets calls on 429/quota AND transient network errors.
-    """
     delays = [0.6, 1.2, 2.4, 4.8, 9.6]
     last_err = None
     for d in delays:
@@ -69,6 +70,7 @@ def retry_api(fn, *args, **kwargs):
                 or isinstance(
                     e,
                     (
+                        APIError,
                         requests.exceptions.ConnectionError,
                         requests.exceptions.Timeout,
                         socket.timeout,
@@ -79,24 +81,27 @@ def retry_api(fn, *args, **kwargs):
             if transient:
                 time.sleep(d)
                 continue
-
             raise
     raise last_err
 
 
-# -----------------------------
-# UUID normalization
-# -----------------------------
-def normalize_uuid(s: str) -> str:
+# ============================================================
+# Utilities
+# ============================================================
+def normalize_uuid(s: Any) -> str:
     if s is None:
         return ""
     s = str(s)
-    s = s.replace("\ufeff", "")  # BOM
-    s = s.replace("\u200c", "")  # ZWNJ
-    s = s.replace("\u200d", "")  # ZWJ
-    s = s.replace("\u200e", "")  # LRM
-    s = s.replace("\u200f", "")  # RLM
-    s = s.replace("\u202a", "").replace("\u202b", "").replace("\u202c", "")  # bidi embedding
+    s = (
+        s.replace("\ufeff", "")
+        .replace("\u200c", "")
+        .replace("\u200d", "")
+        .replace("\u200e", "")
+        .replace("\u200f", "")
+        .replace("\u202a", "")
+        .replace("\u202b", "")
+        .replace("\u202c", "")
+    )
     return s.strip()
 
 
@@ -132,9 +137,9 @@ def safe_col(df: pd.DataFrame, col: str) -> pd.Series:
     return df[col].astype(str).fillna("").map(lambda x: str(x).strip())
 
 
-# -----------------------------
+# ============================================================
 # Cached resources
-# -----------------------------
+# ============================================================
 @st.cache_resource
 def get_spreadsheet(sa: dict, spreadsheet_id: str):
     gc = get_client_from_secrets(sa)
@@ -159,7 +164,7 @@ def get_worksheets(sa: dict, spreadsheet_id: str):
     users = _get_or_create(USERS_SHEET_NAME, rows=2000, cols=10)
     audit = _get_or_create(AUDIT_SHEET_NAME, rows=10000, cols=10)
 
-    # ---- ensure Locks header (robust)
+    # ---- ensure Locks header
     required_locks = ["_uuid", "locked_by", "locked_at", "expires_at"]
     header = retry_api(locks.row_values, 1)
     header = [str(h).strip() for h in header if str(h).strip()]
@@ -204,9 +209,9 @@ def get_worksheets(sa: dict, spreadsheet_id: str):
     }
 
 
-# -----------------------------
-# Audit log
-# -----------------------------
+# ============================================================
+# Audit
+# ============================================================
 def audit_log(audit_ws, action: str, uuid_value: str, email: str, items_count: int = 0, note: str = ""):
     try:
         retry_api(
@@ -215,27 +220,18 @@ def audit_log(audit_ws, action: str, uuid_value: str, email: str, items_count: i
             value_input_option="USER_ENTERED",
         )
     except Exception:
-        # Audit should never break main flow
         pass
 
 
-# -----------------------------
+# ============================================================
 # Auth helpers
-# -----------------------------
+# ============================================================
 @st.cache_data(show_spinner=False, ttl=120)
 def load_users_df_cached(_users_ws) -> pd.DataFrame:
     vals = retry_api(_users_ws.get_all_values)
     if not vals or len(vals) < 2:
         return pd.DataFrame(
-            columns=[
-                "_row",
-                "email",
-                "password_hash",
-                "is_active",
-                "reset_code_hash",
-                "reset_expires_at",
-                "last_login_at",
-            ]
+            columns=["_row", "email", "password_hash", "is_active", "reset_code_hash", "reset_expires_at", "last_login_at"]
         )
 
     headers = [str(h).strip() for h in vals[0]]
@@ -274,15 +270,9 @@ def send_otp_email(to_email: str, code: str) -> int:
         f"This code will expire soon. If you did not request this, ignore this email."
     )
 
-    msg = Mail(
-        from_email=from_email,
-        to_emails=to_email,
-        subject=subject,
-        plain_text_content=body,
-    )
+    msg = Mail(from_email=from_email, to_emails=to_email, subject=subject, plain_text_content=body)
     sg = SendGridAPIClient(api_key)
     resp = sg.send(msg)
-    st.info(f"SendGrid response: {resp.status_code} (202 means accepted)")
     return int(resp.status_code)
 
 
@@ -438,7 +428,7 @@ def auth_gate(users_ws):
             except Exception as e:
                 safe_stop("Failed to send email. Check SendGrid API key, sender verification, and network.", e)
 
-            st.success("Code accepted by SendGrid. Check inbox/spam/promotions.")
+            st.success("Verification code sent. Check inbox/spam/promotions.")
 
         st.markdown("### Verify code and set password")
         with st.form("set_password_form"):
@@ -494,9 +484,9 @@ def get_user_id() -> str:
     return st.session_state["session_user_id"]
 
 
-# -----------------------------
+# ============================================================
 # Locks
-# -----------------------------
+# ============================================================
 @st.cache_data(show_spinner=False, ttl=10)
 def load_locks_df_cached(_locks_ws) -> pd.DataFrame:
     values = retry_api(_locks_ws.get_all_values)
@@ -555,7 +545,8 @@ def is_uuid_locked_by_other(locks_ws, uuid_value: str, user_id: str) -> bool:
     if hit.empty:
         return False
 
-    return any(safe_col(hit, "locked_by") != user_id)
+    locked_by = str(hit.iloc[0].get("locked_by", "")).strip()
+    return locked_by != user_id
 
 
 def acquire_lock(locks_ws, uuid_value: str, user_id: str) -> bool:
@@ -616,66 +607,67 @@ def release_lock(locks_ws, uuid_value: str, user_id: str):
     load_locks_df_cached.clear()
 
 
-# -----------------------------
-# Correction log reads
-# -----------------------------
-@st.cache_data(show_spinner=False, ttl=120)
-def load_correction_log_df_cached(_corr_ws) -> pd.DataFrame:
-    values = retry_api(_corr_ws.get_all_values)
+# ============================================================
+# Sheet readers (UNCACHED for save path)
+# ============================================================
+def load_correction_log_uncached(corr_ws) -> pd.DataFrame:
+    values = retry_api(corr_ws.get_all_values)
     if not values or len(values) < 2:
         return pd.DataFrame()
-
     headers = [str(h).strip() for h in values[0]]
     rows = values[1:]
-
     data = []
     for sheet_row_num, r in enumerate(rows, start=2):
         row_dict = {"_row": sheet_row_num}
         for i, h in enumerate(headers):
             row_dict[h] = r[i].strip() if i < len(r) else ""
         data.append(row_dict)
-
     return pd.DataFrame(data)
 
 
-@st.cache_data(show_spinner=False, ttl=300)
-def build_pending_uuid_list_cached(df_corr: pd.DataFrame) -> list[str]:
-    if df_corr.empty or "_uuid" not in df_corr.columns or "new_value" not in df_corr.columns:
-        return []
-
-    uu_raw = safe_col(df_corr, "_uuid").map(normalize_uuid)
-    newv = safe_col(df_corr, "new_value")
-
-    pending = df_corr[(uu_raw != "") & (newv == "")]
-    if pending.empty:
-        return []
-
-    uuids = safe_col(pending, "_uuid").map(normalize_uuid)
-    uuids = uuids[uuids != ""].unique().tolist()
-    uuids.sort()
-    return uuids
+def get_headers_uncached(ws) -> list[str]:
+    hdr = retry_api(ws.row_values, 1)
+    return [str(h).strip() for h in hdr if str(h).strip()]
 
 
-@st.cache_data(show_spinner=False, ttl=300)
-def get_headers_cached(_ws) -> list[str]:
-    headers = retry_api(_ws.row_values, 1)
-    return [str(h).strip() for h in headers if str(h).strip()]
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def get_uuid_column_cached(_ws, uuid_col: str = "_uuid") -> list[str]:
-    headers = retry_api(_ws.row_values, 1)
+def get_uuid_rows_in_sheet(ws, uuid_value: str, uuid_col: str = "_uuid") -> list[int]:
+    """
+    Return sheet row numbers (2-based) where uuid_col equals uuid_value (normalized).
+    """
+    headers = retry_api(ws.row_values, 1)
     headers = [str(h).strip() for h in headers]
     if uuid_col not in headers:
         return []
     idx = headers.index(uuid_col) + 1
-    vals = retry_api(_ws.col_values, idx)
-    return [normalize_uuid(v) for v in vals[1:]]
+    col_vals = retry_api(ws.col_values, idx)
+    target = normalize_uuid(uuid_value)
+    hits = []
+    for i, v in enumerate(col_vals[1:], start=2):
+        if normalize_uuid(v) == target:
+            hits.append(i)
+    return hits
 
 
-# -----------------------------
-# Ensure translated_by / translated_at
-# -----------------------------
+def batch_update_rows(ws, headers: list[str], row_nums: list[int], rows_values: list[list[str]]):
+    """
+    Update full rows A..last_col for given row_nums (same length as rows_values).
+    Uses batch_update.
+    """
+    if not row_nums:
+        return
+    last_col = _col_letter(len(headers))
+    data = []
+    for rnum, vals in zip(row_nums, rows_values):
+        vals = vals if isinstance(vals, list) else list(vals)
+        if len(vals) < len(headers):
+            vals = vals + [""] * (len(headers) - len(vals))
+        data.append({"range": f"A{rnum}:{last_col}{rnum}", "values": [vals[: len(headers)]]})
+    retry_api(ws.batch_update, data)
+
+
+# ============================================================
+# Correction meta columns
+# ============================================================
 @st.cache_data(show_spinner=False, ttl=300)
 def get_corr_headers_cached(_corr_ws) -> list[str]:
     hdr = retry_api(_corr_ws.row_values, 1)
@@ -721,9 +713,20 @@ def batch_update_translated_meta(corr_ws, row_nums: list[int], email: str):
     retry_api(corr_ws.batch_update, data)
 
 
-# -----------------------------
-# Clean_Data dedupe
-# -----------------------------
+# ============================================================
+# Clean_Data helpers
+# ============================================================
+@st.cache_data(show_spinner=False, ttl=300)
+def get_uuid_column_cached(_ws, uuid_col: str = "_uuid") -> list[str]:
+    headers = retry_api(_ws.row_values, 1)
+    headers = [str(h).strip() for h in headers]
+    if uuid_col not in headers:
+        return []
+    idx = headers.index(uuid_col) + 1
+    vals = retry_api(_ws.col_values, idx)
+    return [normalize_uuid(v) for v in vals[1:]]
+
+
 def ensure_clean_uuid_set(clean_ws):
     if "clean_uuid_set" in st.session_state:
         return
@@ -741,9 +744,6 @@ def add_uuid_to_clean_set(clean_ws, uuid_value: str):
     st.session_state["clean_uuid_set"].add(normalize_uuid(uuid_value))
 
 
-# -----------------------------
-# Build Clean_Data row on Save
-# -----------------------------
 def build_replacements(df_uuid_all: pd.DataFrame) -> dict:
     repl = {}
     q = safe_col(df_uuid_all, "Question")
@@ -756,15 +756,13 @@ def build_replacements(df_uuid_all: pd.DataFrame) -> dict:
 
 def fetch_raw_rows_for_uuid(raw_ws, uuid_value: str, raw_headers: list[str], uuid_col: str = "_uuid") -> list[list[str]]:
     target = normalize_uuid(uuid_value)
-    uuid_vals = get_uuid_column_cached(raw_ws, uuid_col)
-
-    matches = [i + 2 for i, v in enumerate(uuid_vals) if v == target]
-    if not matches:
+    uuid_rows = get_uuid_rows_in_sheet(raw_ws, target, uuid_col=uuid_col)
+    if not uuid_rows:
         return []
 
     last_col = _col_letter(len(raw_headers))
     out = []
-    for rnum in matches:
+    for rnum in uuid_rows:
         rng = f"A{rnum}:{last_col}{rnum}"
         row = retry_api(raw_ws.get, rng)
         out.append(row[0] if row else [""] * len(raw_headers))
@@ -788,9 +786,9 @@ def apply_replacements(raw_headers: list[str], raw_row: list[str], repl: dict) -
     return [row_map.get(h, "") for h in raw_headers]
 
 
-# -----------------------------
-# UI cards
-# -----------------------------
+# ============================================================
+# UI mini cards
+# ============================================================
 def mini_card(
     title: str,
     value: str,
@@ -819,9 +817,9 @@ def mini_card(
     )
 
 
-# -----------------------------
-# Secrets / worksheets
-# -----------------------------
+# ============================================================
+# Secrets / Worksheets
+# ============================================================
 try:
     sa = dict(st.secrets["gcp_service_account"])
     spreadsheet_id = st.secrets["app"]["spreadsheet_id"]
@@ -851,6 +849,44 @@ try:
 except Exception:
     pass
 
+
+# ============================================================
+# Load Correction_Log (cached for UI only)
+# ============================================================
+@st.cache_data(show_spinner=False, ttl=120)
+def load_correction_log_df_cached(_corr_ws) -> pd.DataFrame:
+    values = retry_api(_corr_ws.get_all_values)
+    if not values or len(values) < 2:
+        return pd.DataFrame()
+
+    headers = [str(h).strip() for h in values[0]]
+    rows = values[1:]
+
+    data = []
+    for sheet_row_num, r in enumerate(rows, start=2):
+        row_dict = {"_row": sheet_row_num}
+        for i, h in enumerate(headers):
+            row_dict[h] = r[i].strip() if i < len(r) else ""
+        data.append(row_dict)
+
+    return pd.DataFrame(data)
+
+
+@st.cache_data(show_spinner=False, ttl=300)
+def build_pending_uuid_list_cached(df_corr: pd.DataFrame) -> list[str]:
+    if df_corr.empty or "_uuid" not in df_corr.columns or "new_value" not in df_corr.columns:
+        return []
+    uu_raw = safe_col(df_corr, "_uuid").map(normalize_uuid)
+    newv = safe_col(df_corr, "new_value")
+    pending = df_corr[(uu_raw != "") & (newv == "")]
+    if pending.empty:
+        return []
+    uuids = safe_col(pending, "_uuid").map(normalize_uuid)
+    uuids = uuids[uuids != ""].unique().tolist()
+    uuids.sort()
+    return uuids
+
+
 # Load Correction_Log
 try:
     df_corr = load_correction_log_df_cached(corr_ws)
@@ -876,22 +912,24 @@ if not pending_uuid_list:
     st.stop()
 
 
-# -----------------------------
+# ============================================================
 # UUID selection
-# -----------------------------
+# ============================================================
 st.markdown("### Select UUID")
 
-my_locked_uuid = st.session_state.get("locked_uuid", "")
-if my_locked_uuid and my_locked_uuid not in pending_uuid_list:
-    pending_uuid_list = [my_locked_uuid] + pending_uuid_list
+my_locked_uuid = normalize_uuid(st.session_state.get("locked_uuid", ""))
+options = [""] + pending_uuid_list
+if my_locked_uuid and my_locked_uuid not in options:
+    options = ["", my_locked_uuid] + pending_uuid_list
+
+default_index = options.index(my_locked_uuid) if my_locked_uuid in options else 0
 
 selected = st.selectbox(
     "UUID (pending translations only, excludes locked items)",
-    options=[""] + pending_uuid_list,
-    index=0 if not my_locked_uuid else (0 if my_locked_uuid == "" else 1),
+    options=options,
+    index=default_index,
     key="uuid_select",
 )
-
 uuid_value = normalize_uuid(selected)
 
 # release previous lock if changed
@@ -917,17 +955,15 @@ except Exception as e:
 if not ok:
     st.warning("This UUID is currently selected by another user. Choose another UUID.")
     st.session_state.pop("uuid_select", None)
-
     st.rerun()
 
 st.session_state["locked_uuid"] = uuid_value
 
-# pending items for this uuid
+# pending items for this uuid (UI snapshot)
 df_corr_norm = df_corr.copy()
 df_corr_norm["_uuid_norm"] = safe_col(df_corr_norm, "_uuid").map(normalize_uuid)
 df_uuid_pending = df_corr_norm[
-    (df_corr_norm["_uuid_norm"] == uuid_value) &
-    (safe_col(df_corr_norm, "new_value") == "")
+    (df_corr_norm["_uuid_norm"] == uuid_value) & (safe_col(df_corr_norm, "new_value") == "")
 ].copy()
 
 if df_uuid_pending.empty:
@@ -945,26 +981,30 @@ audit_log(audit_ws, "LOCK", uuid_value, user_id, items_count=len(df_uuid_pending
 # cards
 c1, c2, c3, c4 = st.columns([1, 2.4, 1, 1])
 with c1:
-    mini_card("Pending items", f"{len(df_uuid_pending):,}", title_size="0.72rem", value_size="1.05rem", subtitle="")
+    mini_card("Pending items", f"{len(df_uuid_pending):,}", title_size="0.72rem", value_size="1.05rem")
 with c2:
     mini_card(
-        "UUID (locked)", uuid_value, f"Locked by: {user_id}",
-        title_size="0.8rem", value_size="1.45rem", subtitle_size="0.76rem",
-        value_wrap=False, card_min_height="90px"
+        "UUID (locked)",
+        uuid_value,
+        f"Locked by: {user_id}",
+        title_size="0.8rem",
+        value_size="1.45rem",
+        subtitle_size="0.76rem",
+        value_wrap=False,
+        card_min_height="90px",
     )
 with c3:
-    mini_card("Validation", "English-only", title_size="0.72rem", value_size="1.05rem", subtitle="")
+    mini_card("Validation", "English-only", title_size="0.72rem", value_size="1.05rem")
 with c4:
-    mini_card("Clean_Data", "On Save", title_size="0.72rem", value_size="1.05rem", subtitle="")
+    mini_card("Clean_Data", "On Save", title_size="0.72rem", value_size="1.05rem")
 
 st.markdown("---")
 
 
-# -----------------------------
-# Back button logic (NEW)
-# -----------------------------
+# ============================================================
+# Back button logic
+# ============================================================
 def go_back():
-    # release lock
     try:
         cur = normalize_uuid(st.session_state.get("locked_uuid", ""))
         if cur:
@@ -973,11 +1013,9 @@ def go_back():
     except Exception:
         pass
 
-    # reset selection/state (IMPORTANT: do NOT assign uuid_select)
     st.session_state["locked_uuid"] = ""
-    st.session_state.pop("uuid_select", None)  # ✅ instead of setting ""
+    st.session_state.pop("uuid_select", None)
 
-    # clear cached locks table quickly
     try:
         load_locks_df_cached.clear()
     except Exception:
@@ -986,10 +1024,9 @@ def go_back():
     st.rerun()
 
 
-
-# -----------------------------
+# ============================================================
 # Editor
-# -----------------------------
+# ============================================================
 st.markdown("### Translate and Save")
 
 edit_df = df_uuid_pending[["_row", "Question", "old_value", "new_value"]].copy()
@@ -1011,9 +1048,9 @@ edited = st.data_editor(
 row_nums = edited["_row"].astype(int).tolist()
 new_vals = edited["new_value"].astype(str).fillna("").str.strip().tolist()
 
-invalid_rows = []
-empty_rows = []
-updates = []
+invalid_rows: list[int] = []
+empty_rows: list[int] = []
+user_updates_map: dict[int, str] = {}
 
 for rnum, new_val in zip(row_nums, new_vals):
     if not new_val:
@@ -1022,9 +1059,8 @@ for rnum, new_val in zip(row_nums, new_vals):
     if looks_non_english(new_val):
         invalid_rows.append(rnum)
         continue
-    updates.append((rnum, new_val))
+    user_updates_map[int(rnum)] = str(new_val)
 
-# buttons row (Back + Save)
 b1, b2, b3 = st.columns([1, 1, 2])
 with b1:
     back = st.button("⬅ Back", type="secondary")
@@ -1032,7 +1068,7 @@ with b2:
     save = st.button("Save", type="primary")
 with b3:
     st.markdown(
-        f"<div style='opacity:0.72; padding-top:8px;'>Ready: <b>{len(updates)}</b> | Empty: <b>{len(empty_rows)}</b> | Invalid: <b>{len(invalid_rows)}</b></div>",
+        f"<div style='opacity:0.72; padding-top:8px;'>Ready: <b>{len(user_updates_map)}</b> | Empty: <b>{len(empty_rows)}</b> | Invalid: <b>{len(invalid_rows)}</b></div>",
         unsafe_allow_html=True,
     )
 
@@ -1046,76 +1082,153 @@ if invalid_rows:
         + (" ..." if len(invalid_rows) > 30 else "")
     )
 
+# ============================================================
+# Save flow (guarantee write -> verify -> build Clean_Data)
+# ============================================================
 if save:
+    # Hard requirement: ALL pending must be filled
     if empty_rows:
-        st.warning("Fill all pending new_value cells before saving.")
+        st.warning(
+            "برای ذخیره، باید همه‌ی new_value ها را پر کنید. "
+            f"این ردیف‌ها هنوز خالی هستند: {', '.join(map(str, empty_rows[:30]))}"
+            + (" ..." if len(empty_rows) > 30 else "")
+        )
         st.stop()
     if invalid_rows:
         st.stop()
 
     try:
-        with st.spinner("Updating Correction_Log..."):
+        with st.spinner("Saving new_value into Correction_Log (verified)..."):
+            # 1) Fresh snapshot (UNCACHED) to avoid stale cache / race
+            corr_latest = load_correction_log_uncached(corr_ws)
+            if corr_latest.empty:
+                safe_stop("Correction_Log could not be read during save. Try again.")
+
+            corr_latest["_uuid_norm"] = safe_col(corr_latest, "_uuid").map(normalize_uuid)
+            corr_uuid_all = corr_latest[corr_latest["_uuid_norm"] == uuid_value].copy()
+            if corr_uuid_all.empty:
+                safe_stop("UUID not found in Correction_Log during save (unexpected).")
+
+            # 2) Build updates ONLY for rows that exist & still need update
+            corr_uuid_all["_newv"] = safe_col(corr_uuid_all, "new_value")
+            updates: list[tuple[int, str]] = []
+
+            for rnum, val in user_updates_map.items():
+                # ensure row still belongs to uuid
+                hit = corr_uuid_all[corr_uuid_all["_row"].astype(int) == int(rnum)]
+                if hit.empty:
+                    continue
+                # update even if non-empty? (safe: overwrite with user value)
+                updates.append((int(rnum), val))
+
+            if not updates:
+                safe_stop("No valid updates were found to write. Please refresh and try again.")
+
+            # 3) Write updates
             retry_api(batch_update_new_values, corr_ws, updates=updates, new_value_col="new_value")
-            translated_rows = [r for r, _v in updates]
+
+            # 4) translated meta
+            translated_rows = [r for r, _ in updates]
             batch_update_translated_meta(corr_ws, translated_rows, user_id)
 
-        audit_log(audit_ws, "SAVE", uuid_value, user_id, items_count=len(updates), note="updated new_value + translated_meta")
+            # 5) Verify: re-read fresh until all new_value filled for this uuid
+            verify_ok = False
+            last_pending = None
+            for _ in range(5):
+                time.sleep(0.35)
+                corr_check = load_correction_log_uncached(corr_ws)
+                corr_check["_uuid_norm"] = safe_col(corr_check, "_uuid").map(normalize_uuid)
+                df_uuid_all = corr_check[corr_check["_uuid_norm"] == uuid_value].copy()
 
-        # clear caches that affect lists
-        load_correction_log_df_cached.clear()
-        build_pending_uuid_list_cached.clear()
+                if df_uuid_all.empty:
+                    last_pending = "UUID missing after write"
+                    continue
 
-        with st.spinner("Building Clean_Data row..."):
-            df_corr2 = load_correction_log_df_cached(corr_ws)
-            df_corr2["_uuid_norm"] = safe_col(df_corr2, "_uuid").map(normalize_uuid)
-            df_uuid_all = df_corr2[df_corr2["_uuid_norm"] == uuid_value].copy()
+                nv = safe_col(df_uuid_all, "new_value")
+                if (nv == "").any():
+                    # still pending
+                    last_pending = "pending new_value still exists"
+                    continue
 
+                if nv.apply(looks_non_english).any():
+                    last_pending = "non-english new_value detected"
+                    continue
+
+                verify_ok = True
+                break
+
+            if not verify_ok:
+                safe_stop(
+                    "Save completed, but verification did not confirm a fully-complete UUID yet. "
+                    "Please click Save again or refresh. "
+                    f"(Reason: {last_pending})"
+                )
+
+        audit_log(audit_ws, "SAVE", uuid_value, user_id, items_count=len(updates), note="saved + verified")
+
+        # 6) Build Clean_Data rows from Raw_Kobo_Data + replacements
+        with st.spinner("Building / Updating Clean_Data..."):
+            # Fresh df_uuid_all from last verification loop
+            corr_final = load_correction_log_uncached(corr_ws)
+            corr_final["_uuid_norm"] = safe_col(corr_final, "_uuid").map(normalize_uuid)
+            df_uuid_all = corr_final[corr_final["_uuid_norm"] == uuid_value].copy()
             if df_uuid_all.empty:
-                safe_stop("UUID not found in Correction_Log after save. Clean_Data not updated.")
+                safe_stop("UUID not found when building Clean_Data (unexpected).")
 
-            if (safe_col(df_uuid_all, "new_value") == "").any():
-                safe_stop("Some items for this UUID are still pending. Clean_Data was not updated.")
+            raw_headers = get_headers_uncached(raw_ws)
+            if not raw_headers:
+                safe_stop("Raw_Kobo_Data headers not found.")
 
-            if safe_col(df_uuid_all, "new_value").apply(looks_non_english).any():
-                safe_stop("Some new_value entries are not English-only. Clean_Data was not updated.")
+            raw_rows = fetch_raw_rows_for_uuid(raw_ws, uuid_value, raw_headers, uuid_col="_uuid")
+            if not raw_rows:
+                safe_stop("Raw_Kobo_Data row not found for this UUID.")
 
-            ensure_clean_uuid_set(clean_ws)
-            if clean_contains_uuid(clean_ws, uuid_value):
-                st.info("Clean_Data already contains this UUID. No new row was appended.")
+            clean_headers = ensure_clean_headers_like_raw(clean_ws, raw_headers)
+            repl = build_replacements(df_uuid_all)
+
+            out_rows = []
+            for rr in raw_rows:
+                updated_row_raw_order = apply_replacements(raw_headers, rr, repl)
+                if clean_headers == raw_headers:
+                    out_rows.append(updated_row_raw_order)
+                else:
+                    row_map = {
+                        raw_headers[i]: (updated_row_raw_order[i] if i < len(updated_row_raw_order) else "")
+                        for i in range(len(raw_headers))
+                    }
+                    out_rows.append([row_map.get(h, "") for h in clean_headers])
+
+            # 7) Upsert into Clean_Data (update existing UUID rows if present)
+            existing_clean_rows = get_uuid_rows_in_sheet(clean_ws, uuid_value, uuid_col="_uuid")
+
+            if existing_clean_rows:
+                # Update the existing rows (1:1 for min length)
+                n_update = min(len(existing_clean_rows), len(out_rows))
+                batch_update_rows(clean_ws, clean_headers, existing_clean_rows[:n_update], out_rows[:n_update])
+
+                # If more out_rows than existing, append the remainder
+                if len(out_rows) > len(existing_clean_rows):
+                    tail = out_rows[len(existing_clean_rows) :]
+                    retry_api(clean_ws.append_rows, tail, value_input_option="USER_ENTERED")
+
+                # If existing rows are more than out_rows, leave them as-is (conservative)
+                st.success(f"Saved translations and UPDATED Clean_Data for UUID. Rows written: {len(out_rows)}")
             else:
-                raw_headers = get_headers_cached(raw_ws)
-                if not raw_headers:
-                    safe_stop("Raw_Kobo_Data headers not found.")
-
-                raw_rows = fetch_raw_rows_for_uuid(raw_ws, uuid_value, raw_headers, uuid_col="_uuid")
-                if not raw_rows:
-                    safe_stop("Raw_Kobo_Data row not found for this UUID.")
-
-                clean_headers = ensure_clean_headers_like_raw(clean_ws, raw_headers)
-                repl = build_replacements(df_uuid_all)
-
-                out_rows = []
-                for rr in raw_rows:
-                    updated_row_raw_order = apply_replacements(raw_headers, rr, repl)
-                    if clean_headers == raw_headers:
-                        out_rows.append(updated_row_raw_order)
-                    else:
-                        row_map = {raw_headers[i]: (updated_row_raw_order[i] if i < len(updated_row_raw_order) else "") for i in range(len(raw_headers))}
-                        out_rows.append([row_map.get(h, "") for h in clean_headers])
-
                 retry_api(clean_ws.append_rows, out_rows, value_input_option="USER_ENTERED")
-                add_uuid_to_clean_set(clean_ws, uuid_value)
-                st.success(f"Saved translations and appended {len(out_rows)} row(s) into Clean_Data.")
+                st.success(f"Saved translations and APPENDED {len(out_rows)} row(s) into Clean_Data.")
+
+            add_uuid_to_clean_set(clean_ws, uuid_value)
 
     except Exception as e:
         safe_stop("Save failed due to a temporary error. Please try again.", e)
     finally:
-        # ALWAYS release lock (no matter what)
+        # ALWAYS release lock
         try:
             release_lock(locks_ws, uuid_value, user_id)
             audit_log(audit_ws, "RELEASE", uuid_value, user_id, note="released after save")
         except Exception:
             pass
+
         st.session_state["locked_uuid"] = ""
         st.session_state.pop("uuid_select", None)
 
@@ -1124,5 +1237,11 @@ if save:
         except Exception:
             pass
 
-    st.rerun()
+    # refresh UI lists
+    try:
+        load_correction_log_df_cached.clear()
+        build_pending_uuid_list_cached.clear()
+    except Exception:
+        pass
 
+    st.rerun()
