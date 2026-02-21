@@ -544,3 +544,6 @@ section[data-testid="stSidebar"] [data-baseweb="datepicker"] > div:focus-within{
   overflow: hidden !important;
 }
 [data-baseweb="calendar"] *{ color: var(--text) !important; }
+
+[theme]
+base="dark"
