@@ -14,13 +14,13 @@ from services.streamlit_gsheets import get_worksheet, get_spreadsheet, retry_api
 
 
 # ============================================================
-# Page Config
+# Page Configuration
 # ============================================================
 st.set_page_config(page_title="IOM ID Checker | PDM", page_icon="🆔", layout="wide")
 load_css()
 page_header(
     "🆔 IOM ID Checker",
-    "Resolve Raw Kobo IDs against Sample (IOMID/CaseNumber) + fallback by Name/Father/Province",
+    "Resolve raw Kobo IDs against Sample (IOMID/CaseNumber) with optional fallbacks (digits-only, name/father/province).",
 )
 
 # ============================================================
@@ -88,7 +88,7 @@ alt.themes.register("pdm_modern_iomid", _pdm_altair_theme)
 alt.themes.enable("pdm_modern_iomid")
 
 # ============================================================
-# Secrets + Client
+# Secrets and Google Sheets Client
 # ============================================================
 try:
     sa = dict(st.secrets["gcp_service_account"])
@@ -98,7 +98,7 @@ except Exception:
     st.stop()
 
 # ============================================================
-# Sheet Names + Column Names
+# Sheet Names and Column Names
 # ============================================================
 RAW_SHEET = "Raw_Kobo_Data"
 SAMPLE_SHEET = "Sample"
@@ -109,7 +109,7 @@ RAW_DATE_COL = "start"
 RAW_INTERVIEWER_COL = "A.2. Interviewer name"
 RAW_PROVINCE_COL = "A.8. Province"
 
-# Raw name columns (for fallback search)
+# Raw name columns (used for name-based fallback matching)
 RAW_NAME_COL = "A.4.1. Name of Respondent"
 RAW_FATHER_COL = "a.4.2. Father name of Respondent"
 
@@ -117,21 +117,21 @@ RAW_FATHER_COL = "a.4.2. Father name of Respondent"
 SAMPLE_IOM_COL = "IOMID"
 SAMPLE_CASE_COL = "CaseNumber"
 
-# Sample name columns (for fallback search)
+# Sample name columns (used for name-based fallback matching)
 SAMPLE_NAME_COL = "Name"
 SAMPLE_FATHER_COL = "FatherName"
 SAMPLE_PROVINCE_COL = "Province"
 
-# Output columns (writeback helper columns)
+# Helper output columns written back to Raw sheet (non-destructive)
 RAW_RESOLVED_IOM_COL = "Resolved_IOMID"
 RAW_RESOLUTION_METHOD_COL = "Resolution_Method"
 RAW_RESOLUTION_NOTE_COL = "Resolution_Note"
 
 # ============================================================
-# Utilities (robust + fast)
+# Utilities (Robust and Fast)
 # ============================================================
 def normalize_text(x) -> str:
-    """Trim, collapse spaces, uppercase. None/blank -> ''."""
+    """Normalize generic text: trim, collapse spaces, uppercase; None/blank -> ''."""
     if x is None:
         return ""
     s = str(x).strip()
@@ -142,7 +142,7 @@ def normalize_text(x) -> str:
 
 
 def digits_only(x) -> str:
-    """Extract digits from value. None/blank -> ''."""
+    """Extract digits from any value; None/blank -> ''."""
     if x is None:
         return ""
     s = str(x)
@@ -154,7 +154,7 @@ def digits_only(x) -> str:
 def normalize_name(x) -> str:
     """
     Normalize names for matching:
-    - trim/collapse spaces
+    - trim / collapse spaces
     - uppercase
     - remove punctuation
     """
@@ -165,6 +165,7 @@ def normalize_name(x) -> str:
 
 
 def _dedupe_headers(headers: list[str]) -> list[str]:
+    """Deduplicate duplicate header labels by suffixing __{n}."""
     seen = {}
     out = []
     for h in headers:
@@ -179,6 +180,7 @@ def _dedupe_headers(headers: list[str]) -> list[str]:
 
 
 def _retry(fn, tries=3, sleep_s=0.6):
+    """Retry wrapper for transient API errors."""
     last = None
     for i in range(tries):
         try:
@@ -195,8 +197,8 @@ def _retry(fn, tries=3, sleep_s=0.6):
 @st.cache_data(ttl=180, show_spinner=False)
 def load_sheet_df(sheet_name: str) -> pd.DataFrame:
     """
-    Fast + stable Google Sheet loader (cached).
-    Adds a helper column `_row` = actual Google Sheet row number (1-based).
+    Load a Google Sheet into a DataFrame (cached).
+    Adds `_row` = the actual Google Sheet row number (1-based).
     """
     ws = get_worksheet(sa, spreadsheet_id, sheet_name)
     values = retry_api(ws.get_all_values)
@@ -211,12 +213,12 @@ def load_sheet_df(sheet_name: str) -> pd.DataFrame:
         return df
 
     df = pd.DataFrame(data, columns=headers)
-    df["_row"] = list(range(2, 2 + len(df)))  # header is row 1
+    df["_row"] = list(range(2, 2 + len(df)))  # Header is row 1, first data row is 2
     return df
 
 
 def get_or_create_ws(title: str, rows: int = 5000, cols: int = 30):
-    """Return worksheet handle (create if missing). Uses cached spreadsheet + retry."""
+    """Get a worksheet by title (create if missing)."""
     _, sh = get_spreadsheet(sa, spreadsheet_id)
     try:
         return retry_api(sh.worksheet, title)
@@ -225,12 +227,13 @@ def get_or_create_ws(title: str, rows: int = 5000, cols: int = 30):
 
 
 def chunked(lst, n: int):
+    """Yield successive n-sized chunks from a list."""
     for i in range(0, len(lst), n):
         yield lst[i : i + n]
 
 
 def a1_col(n: int) -> str:
-    """1 -> A, 26 -> Z, 27 -> AA ..."""
+    """Convert 1-based column index to A1 notation column letters."""
     s = ""
     while n:
         n, r = divmod(n - 1, 26)
@@ -240,8 +243,8 @@ def a1_col(n: int) -> str:
 
 def ensure_headers(ws, required_cols: list[str]) -> dict[str, int]:
     """
-    Ensure the given columns exist in header row.
-    Returns mapping col_name -> 1-based column index.
+    Ensure required columns exist in the header row.
+    Returns a mapping: col_name -> 1-based column index.
     """
     header = _retry(lambda: ws.row_values(1))
     header = [str(x).strip() for x in header]
@@ -257,25 +260,25 @@ def ensure_headers(ws, required_cols: list[str]) -> dict[str, int]:
     return header_map
 
 
-def update_single_column_by_rows(ws, col_index_1based: int, row_to_value: list[tuple[int, str]], chunk_size: int = 300):
+def update_single_column_by_rows(
+    ws, col_index_1based: int, row_to_value: list[tuple[int, str]], chunk_size: int = 300
+):
     """
-    Update ONE column (same column) for multiple rows using batch_update, chunked.
-    row_to_value: list of (row_no, value)
+    Update a single column for multiple rows using batch_update (chunked).
+    row_to_value: list of (row_number, new_value).
     """
-    updates = []
     col_letter = a1_col(col_index_1based)
-    for row_no, val in row_to_value:
-        rng = f"{col_letter}{row_no}:{col_letter}{row_no}"
-        updates.append({"range": rng, "values": [[val]]})
+    updates = [{"range": f"{col_letter}{row}:{col_letter}{row}", "values": [[val]]} for row, val in row_to_value]
 
     for part in chunked(updates, chunk_size):
         _retry(lambda p=part: ws.batch_update(p, value_input_option="RAW"))
 
 
 # ============================================================
-# Modern chart helpers
+# Modern Chart Helpers
 # ============================================================
 def donut_chart(df_: pd.DataFrame, title: str, color_range: list[str]):
+    """Donut chart with a percentage label in the center."""
     d = df_.copy()
     total = float(d["count"].sum()) if len(d) else 0.0
     d["pct"] = d["count"] / max(1.0, total)
@@ -298,15 +301,18 @@ def donut_chart(df_: pd.DataFrame, title: str, color_range: list[str]):
     match_pct = 0.0
     if len(d) and (d["label"] == "Resolved").any():
         match_pct = float(d.loc[d["label"] == "Resolved", "pct"].iloc[0]) * 100.0
+
     center = (
         alt.Chart(pd.DataFrame({"t": [f"{match_pct:.0f}%"]}))
         .mark_text(fontSize=28, fontWeight=900, color="#E2E8F0")
         .encode(text="t:N")
     )
+
     return donut + center
 
 
 def modern_barh(df_: pd.DataFrame, title: str, x_title: str = "Count", max_rows: int = 20):
+    """Modern horizontal bar chart (top N)."""
     d = df_.copy()
     if d.empty:
         return alt.Chart(pd.DataFrame({"label": [], "count": []})).mark_bar().properties(height=320, title=title)
@@ -327,7 +333,7 @@ def modern_barh(df_: pd.DataFrame, title: str, x_title: str = "Count", max_rows:
 
 
 # ============================================================
-# Controls (clean sidebar)
+# Sidebar Controls (Minimal)
 # ============================================================
 st.sidebar.header("Controls")
 
@@ -336,13 +342,12 @@ if st.sidebar.button("Refresh data (clear cache)"):
     st.rerun()
 
 ignore_blank_ids = st.sidebar.checkbox("Ignore blank IOM IDs", value=True)
-
 use_normalization = st.sidebar.checkbox("Normalize IDs (trim + uppercase)", value=True)
 use_digits_fallback = st.sidebar.checkbox("Fallback: match by digits only", value=True)
 use_name_fallback = st.sidebar.checkbox("Fallback: match by Name + Father + Province", value=True)
 
 # ============================================================
-# Load data (cached)
+# Load Data
 # ============================================================
 try:
     raw_df = load_sheet_df(RAW_SHEET)
@@ -370,7 +375,7 @@ if sample_df.empty:
     st.warning("Sample sheet has no data.")
     st.stop()
 
-# Required columns
+# Validate required columns
 missing_cols = []
 if RAW_IOM_COL not in raw_df.columns:
     missing_cols.append(f"{RAW_SHEET}: '{RAW_IOM_COL}'")
@@ -382,17 +387,17 @@ for c in [SAMPLE_IOM_COL, SAMPLE_CASE_COL]:
 if use_name_fallback:
     for c in [RAW_NAME_COL, RAW_FATHER_COL, RAW_PROVINCE_COL]:
         if c not in raw_df.columns:
-            missing_cols.append(f"{RAW_SHEET}: '{c}' (needed for Name fallback)")
+            missing_cols.append(f"{RAW_SHEET}: '{c}' (required for name fallback)")
     for c in [SAMPLE_NAME_COL, SAMPLE_FATHER_COL, SAMPLE_PROVINCE_COL]:
         if c not in sample_df.columns:
-            missing_cols.append(f"{SAMPLE_SHEET}: '{c}' (needed for Name fallback)")
+            missing_cols.append(f"{SAMPLE_SHEET}: '{c}' (required for name fallback)")
 
 if missing_cols:
-    st.error("Required columns are missing:\n\n" + "\n".join([f"- {x}" for x in missing_cols]))
+    st.error("Missing required columns:\n\n" + "\n".join([f"- {x}" for x in missing_cols]))
     st.stop()
 
 # ============================================================
-# Optional date filter (safe)
+# Optional Date Filter
 # ============================================================
 filtered_raw = raw_df.copy()
 date_range_applied = False
@@ -418,7 +423,7 @@ if RAW_DATE_COL in raw_df.columns:
             date_range_applied = True
 
 # ============================================================
-# Build lookup indexes from Sample
+# Build Lookup Indexes from Sample
 # ============================================================
 sample_iom = sample_df[SAMPLE_IOM_COL].astype(str).fillna("")
 sample_case = sample_df[SAMPLE_CASE_COL].astype(str).fillna("")
@@ -437,10 +442,8 @@ else:
     sample_df["_iom_digits"] = ""
     sample_df["_case_digits"] = ""
 
-# iom_norm set
 iom_norm_set = set(sample_df["_iom_norm"].dropna().astype(str).tolist())
 
-# case_norm -> iom_norm (ambiguous tracked)
 case_to_iom = {}
 case_amb = set()
 for _, r in sample_df[["_case_norm", "_iom_norm"]].iterrows():
@@ -453,7 +456,6 @@ for _, r in sample_df[["_case_norm", "_iom_norm"]].iterrows():
     else:
         case_to_iom[c] = i
 
-# digits maps
 iom_digits_to_iom = {}
 iom_digits_amb = set()
 case_digits_to_iom = {}
@@ -477,7 +479,6 @@ if use_digits_fallback:
             else:
                 case_digits_to_iom[cdig] = iomn
 
-# name fallback key map
 namekey_to_ioms = {}
 if use_name_fallback:
     s_name = sample_df[SAMPLE_NAME_COL].map(normalize_name)
@@ -493,12 +494,21 @@ if use_name_fallback:
         namekey_to_ioms.setdefault(k, set()).add(v)
 
 # ============================================================
-# Resolver (per row) - LOGIC PRESERVED
+# Row Resolver (Logic Preserved)
 # ============================================================
 def resolve_row(raw_id: str, name_key: str | None):
     """
     Returns: (resolved_iom_norm, method, note)
-    method: EXACT_IOM, CASE_TO_IOM, DIGITS_IOM, DIGITS_CASE, NAME_FALLBACK, UNRESOLVED, AMBIGUOUS, SKIP_BLANK
+
+    method values:
+    - SKIP_BLANK
+    - EXACT_IOM
+    - CASE_TO_IOM
+    - DIGITS_IOM
+    - DIGITS_CASE
+    - NAME_FALLBACK
+    - AMBIGUOUS
+    - UNRESOLVED
     """
     rid = raw_id if raw_id is not None else ""
 
@@ -506,44 +516,44 @@ def resolve_row(raw_id: str, name_key: str | None):
     rid_digits = digits_only(rid) if use_digits_fallback else ""
 
     if ignore_blank_ids and rid_norm == "":
-        return ("", "SKIP_BLANK", "blank id ignored")
+        return ("", "SKIP_BLANK", "Blank ID ignored.")
 
-    # 1) exact match in IOMID
+    # 1) Exact match in IOMID
     if rid_norm != "" and rid_norm in iom_norm_set:
         return (rid_norm, "EXACT_IOM", "")
 
-    # 2) exact match in CaseNumber -> get IOMID
+    # 2) Exact match in CaseNumber -> IOMID
     if rid_norm != "" and rid_norm in case_to_iom:
         if rid_norm in case_amb:
-            return ("", "AMBIGUOUS", f"CaseNumber '{rid_norm}' maps to multiple IOMIDs")
+            return ("", "AMBIGUOUS", f"CaseNumber '{rid_norm}' maps to multiple IOMIDs.")
         return (case_to_iom[rid_norm], "CASE_TO_IOM", "")
 
-    # 3) digits-only match (IOMID)
+    # 3) Digits-only match (IOMID)
     if use_digits_fallback and rid_digits:
         if rid_digits in iom_digits_amb:
-            return ("", "AMBIGUOUS", f"Digits '{rid_digits}' match multiple IOMIDs")
+            return ("", "AMBIGUOUS", f"Digits '{rid_digits}' match multiple IOMIDs.")
         if rid_digits in iom_digits_to_iom:
             return (iom_digits_to_iom[rid_digits], "DIGITS_IOM", f"raw='{rid_norm}' digits='{rid_digits}'")
 
-        # 4) digits-only match (CaseNumber -> IOMID)
+        # 4) Digits-only match (CaseNumber -> IOMID)
         if rid_digits in case_digits_amb:
-            return ("", "AMBIGUOUS", f"Digits '{rid_digits}' match multiple CaseNumbers")
+            return ("", "AMBIGUOUS", f"Digits '{rid_digits}' match multiple CaseNumbers.")
         if rid_digits in case_digits_to_iom:
             return (case_digits_to_iom[rid_digits], "DIGITS_CASE", f"raw='{rid_norm}' digits='{rid_digits}'")
 
-    # 5) fallback by name/father/province
+    # 5) Name-based fallback (Name + Father + Province)
     if use_name_fallback and name_key:
         ioms = namekey_to_ioms.get(name_key, set())
         if len(ioms) == 1:
             return (next(iter(ioms)), "NAME_FALLBACK", "")
         if len(ioms) > 1:
-            return ("", "AMBIGUOUS", "Name/Father/Province matches multiple IOMIDs")
+            return ("", "AMBIGUOUS", "Name/Father/Province matches multiple IOMIDs.")
 
     return ("", "UNRESOLVED", "")
 
 
 # ============================================================
-# Prepare filtered raw + name keys
+# Prepare Filtered Raw Data + Name Keys
 # ============================================================
 filtered_raw["_raw_id"] = filtered_raw[RAW_IOM_COL].astype(str).fillna("")
 filtered_raw["_raw_norm"] = (
@@ -562,29 +572,25 @@ if use_name_fallback:
 else:
     filtered_raw["_name_key"] = None
 
-# Resolve
 res = filtered_raw.apply(lambda r: resolve_row(r["_raw_id"], r["_name_key"]), axis=1, result_type="expand")
 res.columns = ["resolved_iom_norm", "resolution_method", "resolution_note"]
 filtered_raw = pd.concat([filtered_raw, res], axis=1)
 
-# Views
 checked_df = filtered_raw.copy() if not ignore_blank_ids else filtered_raw[filtered_raw["_raw_norm"] != ""].copy()
 resolved_df = checked_df[checked_df["resolved_iom_norm"] != ""].copy()
 unresolved_df = checked_df[checked_df["resolved_iom_norm"] == ""].copy()
 
-# Unresolved unique IDs
 unresolved_ids = unresolved_df["_raw_norm"].value_counts().reset_index()
 unresolved_ids.columns = ["raw_iom_value", "occurrences"]
 
-# Method breakdown
 method_counts = checked_df["resolution_method"].value_counts().reset_index()
 method_counts.columns = ["label", "count"]
 
 # ============================================================
-# Tabs (cleaner)
+# Tabs
 # ============================================================
 tab_overview, tab_unresolved, tab_resolved, tab_writeback, tab_sync_nf = st.tabs(
-    ["Overview", "Unresolved", "Resolved + Replace", "Writeback helpers", "Sync to IOM_Not_found"]
+    ["Overview", "Unresolved", "Resolved + Replace", "Writeback Helpers", "Sync to IOM_Not_found"]
 )
 
 # ------------------ Overview ------------------
@@ -594,7 +600,7 @@ with tab_overview:
     total_checked = int(len(checked_df))
     total_resolved = int(len(resolved_df))
     total_unresolved = int(len(unresolved_df))
-    total_amb = int((checked_df["resolution_method"] == "AMBIGUOUS").sum())
+    total_ambiguous = int((checked_df["resolution_method"] == "AMBIGUOUS").sum())
 
     with st.container(border=True):
         st.markdown("### Summary")
@@ -610,7 +616,7 @@ with tab_overview:
         with c5:
             kpi("Unresolved", f"{total_unresolved:,}", f"Unique: {len(unresolved_ids):,}")
         with c6:
-            kpi("Ambiguous", f"{total_amb:,}", "")
+            kpi("Ambiguous", f"{total_ambiguous:,}", "")
 
     breakdown = pd.DataFrame(
         [{"label": "Resolved", "count": total_resolved}, {"label": "Unresolved", "count": total_unresolved}]
@@ -627,8 +633,7 @@ with tab_overview:
 # ------------------ Unresolved ------------------
 with tab_unresolved:
     with st.container(border=True):
-        st.markdown("### Unresolved (Unique list)")
-
+        st.markdown("### Unresolved (Unique values)")
         if not unresolved_ids.empty:
             top_missing = unresolved_ids.head(20).rename(columns={"raw_iom_value": "label", "occurrences": "count"})
             st.altair_chart(modern_barh(top_missing, "Top unresolved raw ID values", x_title="Occurrences"), use_container_width=True)
@@ -642,18 +647,19 @@ with tab_unresolved:
             mime="text/csv",
         )
 
-    with st.expander("Unresolved rows (Preview)", expanded=False):
+    with st.expander("Unresolved rows (preview)", expanded=False):
         preview_cols = [RAW_IOM_COL]
         for c in [RAW_NAME_COL, RAW_FATHER_COL, RAW_PROVINCE_COL, RAW_DATE_COL, RAW_INTERVIEWER_COL]:
             if c in unresolved_df.columns:
                 preview_cols.append(c)
+
         prev = unresolved_df[preview_cols + ["resolution_method", "resolution_note", "_row"]].copy()
         st.dataframe(prev.head(600), use_container_width=True, hide_index=True)
 
 # ------------------ Resolved + Replace ------------------
 with tab_resolved:
     with st.container(border=True):
-        st.markdown("### Resolved rows (Preview)")
+        st.markdown("### Resolved rows (preview)")
 
         preview_cols = [RAW_IOM_COL, "resolved_iom_norm", "resolution_method"]
         for c in [RAW_NAME_COL, RAW_FATHER_COL, RAW_PROVINCE_COL, RAW_DATE_COL]:
@@ -670,16 +676,14 @@ with tab_resolved:
         )
 
     with st.container(border=True):
-        st.markdown("### ✅ Replace wrong IDs in Raw_Kobo_Data (Overwrite original column)")
+        st.markdown("### Replace raw IOM IDs in `Raw_Kobo_Data` (overwrite original column)")
 
         st.info(
-            f"این بخش مقدار ستون اصلی **`{RAW_IOM_COL}`** را در شیت **`{RAW_SHEET}`** برای ردیف‌های Resolved جایگزین می‌کند.\n\n"
-            "مثال: اگر در Raw مقدار `395491` باشد و از Sample مقدار درست پیدا شود، همین سلول با مقدار درست جایگزین می‌شود."
+            f"This action overwrites the original column `{RAW_IOM_COL}` in `{RAW_SHEET}` for resolved rows.\n\n"
+            "Example: if Raw contains `395491` and Sample resolves it to a correct IOMID, the Raw cell will be replaced with the correct value."
         )
 
-        st.warning(
-            "⚠️ فقط ردیف‌هایی که Resolved هستند آپدیت می‌شوند. ردیف‌های Ambiguous یا Unresolved تغییر نمی‌کنند."
-        )
+        st.warning("Ambiguous or unresolved rows are not changed.")
 
         replace_scope = st.radio(
             "Replace scope",
@@ -690,7 +694,7 @@ with tab_resolved:
         )
 
         replace_only_when_different = st.checkbox(
-            "Replace only when raw value != resolved value (recommended)",
+            "Replace only when raw value differs from resolved value (recommended)",
             value=True,
             key="replace_only_when_different",
         )
@@ -699,11 +703,12 @@ with tab_resolved:
             try:
                 raw_ws = get_worksheet(sa, spreadsheet_id, RAW_SHEET)
 
-                # Build scope dataframe (recompute if all-rows)
+                # Build scope dataframe (recompute if all rows)
                 if replace_scope == "All rows (ignore date filter)":
                     dfw = raw_df.copy()
                     dfw["_raw_id"] = dfw[RAW_IOM_COL].astype(str).fillna("")
                     dfw["_name_key"] = None
+
                     if use_name_fallback:
                         dfw["_name_key"] = (
                             dfw[RAW_NAME_COL].map(normalize_name)
@@ -719,18 +724,18 @@ with tab_resolved:
                 else:
                     dfw = filtered_raw.copy()
 
-                # Only resolved & not ambiguous
+                # Only resolved and not ambiguous
                 dfw = dfw[(dfw["resolved_iom_norm"] != "") & (dfw["resolution_method"] != "AMBIGUOUS")].copy()
 
                 if dfw.empty:
-                    st.warning("هیچ ردیفی برای جایگزینی وجود ندارد (در این Scope).")
+                    st.warning("Nothing to replace (no resolved rows in the selected scope).")
                     st.stop()
 
-                # Find RAW_IOM_COL index
+                # Locate the original RAW_IOM_COL index
                 header = _retry(lambda: raw_ws.row_values(1))
                 header = [str(x).strip() for x in header]
                 if RAW_IOM_COL not in header:
-                    st.error(f"ستون `{RAW_IOM_COL}` در هدر شیت `{RAW_SHEET}` پیدا نشد.")
+                    st.error(f"Column `{RAW_IOM_COL}` was not found in `{RAW_SHEET}` header row.")
                     st.stop()
 
                 raw_iom_col_index = header.index(RAW_IOM_COL) + 1  # 1-based
@@ -748,23 +753,23 @@ with tab_resolved:
                     row_to_value.append((row_no, new_val))
 
                 if not row_to_value:
-                    st.success("هیچ سلولی نیاز به تغییر نداشت (همه موارد از قبل درست بوده‌اند).")
+                    st.success("No replacements were needed (raw values already match resolved values).")
                     st.stop()
 
                 update_single_column_by_rows(raw_ws, raw_iom_col_index, row_to_value, chunk_size=300)
 
-                st.success(f"✅ {len(row_to_value):,} سلول در ستون `{RAW_IOM_COL}` جایگزین شد.")
+                st.success(f"Replaced {len(row_to_value):,} cells in `{RAW_SHEET}` column `{RAW_IOM_COL}`.")
             except Exception as e:
                 st.error(f"Replace failed: {e}")
 
-# ------------------ Writeback helpers (3 columns) ------------------
+# ------------------ Writeback Helpers (Non-destructive) ------------------
 with tab_writeback:
     with st.container(border=True):
-        st.markdown("### Write resolved IOMID back as helper columns (no overwrite)")
+        st.markdown("### Write helper columns back to `Raw_Kobo_Data` (non-destructive)")
 
         st.caption(
-            "این گزینه ستون اصلی Raw را تغییر نمی‌دهد؛ فقط ۳ ستون کمکی می‌سازد/آپدیت می‌کند: "
-            f"`{RAW_RESOLVED_IOM_COL}`, `{RAW_RESOLUTION_METHOD_COL}`, `{RAW_RESOLUTION_NOTE_COL}`"
+            "This option does NOT overwrite the original raw ID column. "
+            f"It writes/updates: `{RAW_RESOLVED_IOM_COL}`, `{RAW_RESOLUTION_METHOD_COL}`, `{RAW_RESOLUTION_NOTE_COL}`."
         )
 
         write_only_resolved = st.checkbox("Write only resolved rows (skip unresolved/blank)", value=True)
@@ -779,11 +784,12 @@ with tab_writeback:
             try:
                 raw_ws = get_worksheet(sa, spreadsheet_id, RAW_SHEET)
 
-                # Scope DF
+                # Build scope dataframe (recompute if all rows)
                 if write_scope == "All rows (ignore date filter)":
                     dfw = raw_df.copy()
                     dfw["_raw_id"] = dfw[RAW_IOM_COL].astype(str).fillna("")
                     dfw["_name_key"] = None
+
                     if use_name_fallback:
                         dfw["_name_key"] = (
                             dfw[RAW_NAME_COL].map(normalize_name)
@@ -803,7 +809,7 @@ with tab_writeback:
                     dfw = dfw[dfw["resolved_iom_norm"] != ""].copy()
 
                 if dfw.empty:
-                    st.warning("Nothing to write (no rows in selected scope).")
+                    st.warning("Nothing to write (no rows in the selected scope).")
                     st.stop()
 
                 header_map = ensure_headers(
@@ -832,14 +838,19 @@ with tab_writeback:
 
                 st.success(f"Wrote helper columns for {len(updates):,} rows into `{RAW_SHEET}`.")
             except Exception as e:
-                st.error(f"Write back failed: {e}")
+                st.error(f"Write helper columns failed: {e}")
 
-# ------------------ Sync unresolved to IOM_Not_found ------------------
+# ------------------ Sync to IOM_Not_found ------------------
 with tab_sync_nf:
     with st.container(border=True):
         st.markdown("### Sync unresolved rows to `IOM_Not_found` (append only new)")
 
-        include_context = st.checkbox("Include context columns", value=True)
+        st.caption(
+            "This will append only NEW unresolved items to `IOM_Not_found` so you can fix Sample later. "
+            "A timestamp is added for traceability."
+        )
+
+        include_context = st.checkbox("Include context columns (Name/Father/Province/Date/Interviewer)", value=True)
 
         if st.button("Sync unresolved now", type="primary"):
             try:
@@ -896,11 +907,11 @@ with tab_sync_nf:
             except Exception as e:
                 st.error(f"Sync failed: {e}")
 
-    with st.expander("Current `IOM_Not_found` (Preview)", expanded=False):
+    with st.expander("Current `IOM_Not_found` (preview)", expanded=False):
         try:
             nf_df = load_sheet_df(NOT_FOUND_SHEET)
             if nf_df.empty:
-                st.info("`IOM_Not_found` is empty (or has only headers).")
+                st.info("`IOM_Not_found` is empty (or contains only headers).")
             else:
                 st.dataframe(nf_df.tail(300), use_container_width=True, hide_index=True)
         except WorksheetNotFound:
@@ -909,7 +920,7 @@ with tab_sync_nf:
             st.warning(f"Could not load `{NOT_FOUND_SHEET}` preview: {e}")
 
 # ============================================================
-# Sidebar footer
+# Sidebar Footer
 # ============================================================
 with st.sidebar:
     st.markdown("---")
