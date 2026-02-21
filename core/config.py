@@ -1,1 +1,7 @@
+[server]
+headless = true
 
+[browser]
+gatherUsageStats = false
+[theme]
+base="dark"
