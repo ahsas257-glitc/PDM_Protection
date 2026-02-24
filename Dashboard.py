@@ -135,7 +135,7 @@ PROVINCE_TARGETS = [
     {"province": "Kunduz", "total": 61, "male": 26, "female": 35},
     {"province": "Nangarhar", "total": 119, "male": 69, "female": 50},
     {"province": "Nimroz", "total": 143, "male": 94, "female": 49},
-    {"province": "Sar-e Pol", "total": 59, "male": 34, "female": 25},
+    {"province": "Sari Pul", "total": 59, "male": 34, "female": 25},
     {"province": "Takhar", "total": 60, "male": 31, "female": 29},
 ]
 prov_targets_df = pd.DataFrame(PROVINCE_TARGETS)
@@ -742,3 +742,4 @@ with st.sidebar:
         """,
         unsafe_allow_html=True
     )
+
